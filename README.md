@@ -84,6 +84,15 @@ probe.py         Phase 0 探针（字段覆盖率，历史产物）
 字段合并优先级：`crowdsource`（人工，Phase 2）> `openlibrary` > `google_books`。
 每个采用值记一条 `field_sources`，对外每字段附 `_source`。
 
+## 部署
+
+见 [DEPLOY.md](DEPLOY.md)。要点：容器化（`Dockerfile`），数据库 `cnbib.db` 放**持久卷**（`CNBIB_DB=/data/cnbib.db`），否则每次发版数据被清空。本地 `docker` 已验证镜像可跑、卷可持久。Fly.io 配置见 `fly.toml`。
+
+## 开源协议
+
+- **代码**：MIT（见 [LICENSE](LICENSE)）。
+- **数据**：CC0（公共领域，随便用）。
+
 ## 已知问题 / 待确认
 
 - **OpenLibrary 端点迁移**：设计文档写的 `/api/books?jscmd=data` 已被 OL 弃用（恒 500），

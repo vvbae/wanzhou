@@ -1,0 +1,26 @@
+# Fly.io 部署配置。首次用 `fly launch` 会就地改写本文件（确认 app 名 / region）。
+# 关键点：[mounts] 把持久卷挂到 /data，CNBIB_DB 指过去——数据库跨部署存活。
+
+app = "wanzhou"            # 改成你自己的 app 名（全局唯一）
+primary_region = "sjc"     # 美西圣何塞；美东用 "iad"
+
+[build]
+
+[env]
+  CNBIB_DB = "/data/cnbib.db"
+
+# 持久卷：数据库不随发版蒸发。卷名 cnbib_data，需先 `fly volumes create`。
+[mounts]
+  source = "cnbib_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0   # 没流量时停机省钱；来请求自动拉起
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

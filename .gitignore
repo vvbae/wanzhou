@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# 项目数据库（随使用增长，不入库）
+*.db
+*.db-wal
+*.db-shm
+cnbib.db
+
+# 探针产物
+probe_raw.json
+
+# 环境
+.env

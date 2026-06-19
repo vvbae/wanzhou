@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>中文书目 · 扫一下就能补全</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; --ok:#2e7d32; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:560px; margin:0 auto; }
+  h1 { font-size:19px; margin:4px 0 2px; }
+  .sub { color:var(--sub); font-size:13px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .row { display:flex; gap:8px; }
+  input, textarea, button { font:inherit; }
+  input[type=text], input[type=search], textarea {
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+  textarea { resize:vertical; min-height:72px; }
+  button { padding:10px 14px; border:0; border-radius:9px; background:var(--ink); color:#fff; font-weight:600; }
+  button.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button:active { opacity:.7; }
+  label { display:block; font-size:13px; color:var(--sub); margin:12px 0 4px; }
+  .badge { display:inline-block; font-size:11px; color:#fff; background:var(--accent); border-radius:6px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+  .field.flag input, .field.flag textarea { border-color:var(--accent); background:#fff8f7; }
+  #cover { max-height:120px; border-radius:8px; margin-top:10px; display:none; }
+  .msg { padding:10px 12px; border-radius:9px; font-size:14px; margin-bottom:12px; display:none; }
+  .msg.ok { background:#eaf4ea; color:var(--ok); display:block; }
+  .msg.err { background:#fbeceb; color:var(--accent); display:block; }
+  .hint { font-size:12px; color:var(--sub); margin-top:4px; }
+  #scanWrap { display:none; margin-top:10px; }
+  #scanWrap video { width:100%; border-radius:9px; background:#000; }
+  footer { color:var(--sub); font-size:12px; text-align:center; margin:18px 0; }
+  #form { display:none; }
+</style>
+</head>
+<body>
+  <h1>中文书目 · 补全 / 纠错</h1>
+  <p class="sub">输入或扫 ISBN，自动带出已知信息，补全或改对后提交。数据 CC0 开放。</p>
+
+  <div class="card">
+    <div class="row">
+      <input id="isbn" type="search" inputmode="numeric" placeholder="输入 ISBN（10 或 13 位）" autocomplete="off">
+      <button id="go">查询</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="scan" class="ghost" style="flex:1">📷 扫条码</button>
+    </div>
+    <div id="scanWrap"><video id="video" playsinline muted></video></div>
+    <div class="hint" id="scanHint"></div>
+  </div>
+
+  <div id="msg" class="msg"></div>
+
+  <form id="form" class="card" autocomplete="off">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div><strong id="fIsbn"></strong><div class="hint">红框字段 = 仍是拼音 / 缺失，最需要补中文</div></div>
+    </div>
+    <img id="cover" alt="封面">
+    <div id="fields"></div>
+    <label>你的署名（可选，可匿名）</label>
+    <input id="hint" type="text" placeholder="留空则匿名（按 IP 记录）">
+    <div class="row" style="margin-top:16px">
+      <button id="submit" type="submit" style="flex:1">提交贡献</button>
+    </div>
+  </form>
+
+  <footer>一个 ISBN 一条记录 · 免费开放 · 无需登录</footer>
+
+<script>
+// 可编辑字段 + 中文标签；list=多值（逗号/顿号分隔），area=多行
+const FIELDS = [
+  ["title","书名"], ["subtitle","副书名"],
+  ["authors","作者（中文译名）","list"], ["translators","译者","list"],
+  ["original_title","原作名"], ["original_authors","原作者（原文名）","list"],
+  ["publisher","出版社"],
+  ["publish_date","出版日期"], ["publish_year","出版年"],
+  ["description","简介","area"], ["language","语言"],
+  ["series","丛书"], ["page_count","页数"],
+  ["subjects","主题 / 标签","list"],
+];
+const $ = s => document.querySelector(s);
+let current = null; // 当前书数据
+
+function showMsg(text, ok) {
+  const m = $("#msg"); m.textContent = text; m.className = "msg " + (ok ? "ok" : "err");
+}
+function clearMsg(){ $("#msg").className = "msg"; }
+
+function renderForm(book, isbn) {
+  current = book || {};
+  $("#fIsbn").textContent = "ISBN " + isbn;
+  const needs = new Set((book && book.needs_chinese) || []);
+  const cover = $("#cover");
+  if (book && book.cover_url) { cover.src = book.cover_url; cover.style.display = "block"; }
+  else cover.style.display = "none";
+
+  const box = $("#fields"); box.innerHTML = "";
+  for (const [key, label, kind] of FIELDS) {
+    let val = book ? book[key] : null;
+    if (Array.isArray(val)) val = val.join(", ");
+    val = (val == null) ? "" : String(val);   // 数字字段（年份/页数）也要转成字符串
+    const flag = needs.has(key);
+    const wrap = document.createElement("div");
+    wrap.className = "field" + (flag ? " flag" : "");
+    const badge = flag ? ' <span class="badge">待补中文</span>' : "";
+    const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const input = kind === "area"
+      ? `<textarea data-key="${key}">${esc(val)}</textarea>`
+      : `<input type="text" data-key="${key}" value="${esc(val)}">`;
+    wrap.innerHTML = `<label>${label}${badge}</label>${input}`;
+    box.appendChild(wrap);
+  }
+  $("#form").style.display = "block";
+}
+
+async function query(isbn) {
+  clearMsg();
+  isbn = (isbn || $("#isbn").value).trim();
+  if (!isbn) return;
+  showMsg("查询中…", true);
+  try {
+    const r = await fetch("/books/" + encodeURIComponent(isbn));
+    if (r.status === 404) {
+      clearMsg(); renderForm(null, isbn);
+      showMsg("各数据源都没有这本书 —— 你可以直接填写新建。", true);
+      return;
+    }
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const book = await r.json();
+    clearMsg(); renderForm(book, book.isbn_13);
+  } catch (e) { showMsg("查询失败：" + e.message, false); }
+}
+
+async function submit(ev) {
+  ev.preventDefault();
+  const fields = {};
+  document.querySelectorAll("#fields [data-key]").forEach(el => {
+    fields[el.dataset.key] = el.value.trim();
+  });
+  const isbn = $("#fIsbn").textContent.replace("ISBN ", "").trim();
+  showMsg("提交中…", true);
+  try {
+    const r = await fetch("/contribute", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ isbn, fields, contributor_hint: $("#hint").value.trim() || null }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    if (data.applied.length === 0) { showMsg("提交成功，但没有字段发生变化。", true); }
+    else { showMsg("已更新 " + data.applied.length + " 个字段：" + data.applied.join("、") + " · 谢谢你！", true); }
+    renderForm(data.book, data.isbn_13); // 用最新数据刷新
+  } catch (e) { showMsg("提交失败：" + e.message, false); }
+}
+
+// 扫码：用浏览器原生 BarcodeDetector（Android Chrome 支持；iOS Safari 暂不支持→手动输入）
+async function startScan() {
+  const hint = $("#scanHint");
+  if (!("BarcodeDetector" in window)) {
+    hint.textContent = "此浏览器不支持扫码，请手动输入 ISBN（iOS 请用相机识别后粘贴）。";
+    return;
+  }
+  const wrap = $("#scanWrap"), video = $("#video");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    video.srcObject = stream; wrap.style.display = "block"; await video.play();
+    const det = new BarcodeDetector({ formats: ["ean_13", "isbn"] });
+    hint.textContent = "把书背后的条形码对准摄像头…";
+    const tick = async () => {
+      if (!video.srcObject) return;
+      try {
+        const codes = await det.detect(video);
+        if (codes.length) {
+          const code = codes[0].rawValue.replace(/\D/g, "");
+          stream.getTracks().forEach(t => t.stop());
+          video.srcObject = null; wrap.style.display = "none"; hint.textContent = "";
+          $("#isbn").value = code; query(code); return;
+        }
+      } catch (_) {}
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  } catch (e) { hint.textContent = "无法打开摄像头：" + e.message; }
+}
+
+$("#go").addEventListener("click", () => query());
+$("#isbn").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); query(); } });
+$("#scan").addEventListener("click", startScan);
+$("#form").addEventListener("submit", submit);
+
+// 从详情页跳来时带 ?isbn=，自动预填
+const _isbn = new URLSearchParams(location.search).get("isbn");
+if (_isbn) { $("#isbn").value = _isbn; query(_isbn); }
+</script>
+</body>
+</html>

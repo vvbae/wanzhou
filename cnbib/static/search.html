@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中文开放书目</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
+  h1 { font-size:20px; margin:6px 0 2px; }
+  .sub { color:var(--sub); font-size:13px; margin:0 0 16px; }
+  .row { display:flex; gap:8px; }
+  input { font:inherit; width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:9px; }
+  button { font:inherit; padding:11px 15px; border:0; border-radius:9px; background:var(--ink); color:#fff; font-weight:600; }
+  button.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button:active { opacity:.7; }
+  .bar { display:flex; gap:8px; margin-top:8px; }
+  .bar button { flex:1; }
+  a { color:inherit; text-decoration:none; }
+  .hit { display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px; margin-top:10px; }
+  .hit img { width:48px; height:68px; object-fit:cover; border-radius:5px; background:#eee; flex:none; }
+  .hit .t { font-weight:600; }
+  .hit .m { color:var(--sub); font-size:13px; }
+  .meta { color:var(--sub); font-size:13px; margin:14px 2px 0; }
+  .empty { color:var(--sub); text-align:center; padding:24px 0; }
+  footer { color:var(--sub); font-size:12px; text-align:center; margin:20px 0; }
+</style>
+</head>
+<body>
+  <h1>中文开放书目</h1>
+  <p class="sub">给 ISBN 或关键词，查干净的中文书元数据。数据 CC0 开放。</p>
+
+  <div class="row">
+    <input id="q" type="search" placeholder="书名 / 作者 / 出版社，或直接输 ISBN" autocomplete="off">
+    <button id="go">搜索</button>
+  </div>
+  <div class="bar">
+    <button id="rand" class="ghost">🎲 随机一本</button>
+    <a href="/edit" style="flex:1"><button class="ghost" style="width:100%">✍️ 补全 / 纠错</button></a>
+  </div>
+
+  <div id="meta" class="meta"></div>
+  <div id="results"></div>
+
+  <footer>一个 ISBN 一条记录 · 免费开放 · 无需登录</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const ISBN_RE = /^[0-9Xx-]{10,17}$/;
+
+function hitCard(b) {
+  const cover = b.cover_url
+    ? `<img src="${b.cover_url}" alt="" onerror="this.style.visibility='hidden'">`
+    : `<img alt="">`;
+  const meta = [ (b.authors||[]).join("、"), b.publisher, b.publish_year ].filter(Boolean).join(" · ");
+  return `<a href="/book?isbn=${encodeURIComponent(b.isbn_13)}"><div class="hit">${cover}
+    <div><div class="t">${b.title || "(无标题)"}</div><div class="m">${meta || ""}</div>
+    <div class="m">ISBN ${b.isbn_13}</div></div></div></a>`;
+}
+
+async function search() {
+  const q = $("#q").value.trim();
+  if (!q) return;
+  $("#meta").textContent = "搜索中…"; $("#results").innerHTML = "";
+
+  // 看着像 ISBN：直接去详情页（会触发实时聚合）
+  if (ISBN_RE.test(q) && q.replace(/[-Xx]/g,"").length >= 10) {
+    location.href = "/book?isbn=" + encodeURIComponent(q);
+    return;
+  }
+  try {
+    const r = await fetch("/search?" + new URLSearchParams({ q }));
+    const d = await r.json();
+    if (!d.results.length) {
+      $("#meta").textContent = "";
+      $("#results").innerHTML = `<div class="empty">库里还没有匹配「${q}」的书。<br>
+        如果你知道它的 ISBN，<a href="/edit" style="color:var(--accent)">直接查一下或补全</a>，库会长大。</div>`;
+      return;
+    }
+    $("#meta").textContent = `共 ${d.total} 条`;
+    $("#results").innerHTML = d.results.map(hitCard).join("");
+  } catch (e) { $("#meta").textContent = "搜索失败：" + e.message; }
+}
+
+async function loadStats() {
+  try {
+    const s = await (await fetch("/stats")).json();
+    if (!$("#q").value) $("#meta").textContent = `库内 ${s.total_books} 本`;
+  } catch (_) {}
+}
+async function randomBook() {
+  try {
+    const r = await fetch("/books/random");
+    if (r.ok) location.href = "/book?isbn=" + (await r.json()).isbn_13;
+    else $("#meta").textContent = "库里还没有书，先去补一本。";
+  } catch (e) { $("#meta").textContent = "出错：" + e.message; }
+}
+
+$("#go").addEventListener("click", search);
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+$("#rand").addEventListener("click", randomBook);
+loadStats();
+</script>
+</body>
+</html>

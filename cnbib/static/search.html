@@ -17,10 +17,8 @@
   button.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
   button:active { opacity:.7; }
   .bar { display:flex; gap:8px; margin-top:8px; }
-  .bar button { flex:1; }
   a { color:inherit; text-decoration:none; }
-  .hit { display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px; margin-top:10px; }
-  .hit img { width:48px; height:68px; object-fit:cover; border-radius:5px; background:#eee; flex:none; }
+  .hit { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:11px 13px; margin-top:10px; }
   .hit .t { font-weight:600; }
   .hit .m { color:var(--sub); font-size:13px; }
   .meta { color:var(--sub); font-size:13px; margin:14px 2px 0; }
@@ -30,71 +28,62 @@
 </head>
 <body>
   <h1>中文开放书目</h1>
-  <p class="sub">给 ISBN 或关键词，查干净的中文书元数据。数据 CC0 开放。</p>
+  <p class="sub">书名 / 作者搜索我们收录的书。作者 / 作品 / 版本三层。数据 CC0 开放。</p>
 
   <div class="row">
-    <input id="q" type="search" placeholder="书名 / 作者 / 出版社，或直接输 ISBN" autocomplete="off">
+    <input id="q" type="search" placeholder="书名 / 作者，或 ISBN" autocomplete="off">
     <button id="go">搜索</button>
   </div>
   <div class="bar">
-    <button id="rand" class="ghost">🎲 随机一本</button>
-    <a href="/edit" style="flex:1"><button class="ghost" style="width:100%">✍️ 补全 / 纠错</button></a>
+    <button id="rand" class="ghost" style="flex:1">🎲 随机一本</button>
   </div>
 
   <div id="meta" class="meta"></div>
   <div id="results"></div>
-
-  <footer>一个 ISBN 一条记录 · 免费开放 · 无需登录</footer>
+  <footer>开放中文书目 · 数据 CC0 · 无需登录</footer>
 
 <script>
 const $ = s => document.querySelector(s);
 const ISBN_RE = /^[0-9Xx-]{10,17}$/;
+const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-function hitCard(b) {
-  const cover = b.cover_url
-    ? `<img src="${b.cover_url}" alt="" onerror="this.style.visibility='hidden'">`
-    : `<img alt="">`;
-  const meta = [ (b.authors||[]).join("、"), b.publisher, b.publish_year ].filter(Boolean).join(" · ");
-  return `<a href="/book?isbn=${encodeURIComponent(b.isbn_13)}"><div class="hit">${cover}
-    <div><div class="t">${b.title || "(无标题)"}</div><div class="m">${meta || ""}</div>
-    <div class="m">ISBN ${b.isbn_13}</div></div></div></a>`;
+function workCard(w) {
+  const meta = [ (w.authors||[]).join("、"), w.first_publish_year ].filter(Boolean).join(" · ");
+  return `<a href="/work?id=${encodeURIComponent(w.id)}"><div class="hit">
+    <div class="t">${esc(w.title) || "(无标题)"}</div>
+    <div class="m">${esc(meta)}</div></div></a>`;
 }
 
 async function search() {
   const q = $("#q").value.trim();
   if (!q) return;
-  $("#meta").textContent = "搜索中…"; $("#results").innerHTML = "";
-
-  // 看着像 ISBN：直接去详情页（会触发实时聚合）
-  if (ISBN_RE.test(q) && q.replace(/[-Xx]/g,"").length >= 10) {
-    location.href = "/book?isbn=" + encodeURIComponent(q);
-    return;
+  if (ISBN_RE.test(q) && q.replace(/[-Xx]/g,"").length >= 10) {  // 像 ISBN → 版本页
+    location.href = "/book?isbn=" + encodeURIComponent(q); return;
   }
+  $("#meta").textContent = "搜索中…"; $("#results").innerHTML = "";
   try {
-    const r = await fetch("/search?" + new URLSearchParams({ q }));
-    const d = await r.json();
+    const d = await (await fetch("/search?" + new URLSearchParams({ q }))).json();
     if (!d.results.length) {
       $("#meta").textContent = "";
-      $("#results").innerHTML = `<div class="empty">库里还没有匹配「${q}」的书。<br>
-        如果你知道它的 ISBN，<a href="/edit" style="color:var(--accent)">直接查一下或补全</a>，库会长大。</div>`;
+      $("#results").innerHTML = `<div class="empty">没有匹配「${esc(q)}」的书。</div>`;
       return;
     }
     $("#meta").textContent = `共 ${d.total} 条`;
-    $("#results").innerHTML = d.results.map(hitCard).join("");
+    $("#results").innerHTML = d.results.map(workCard).join("");
   } catch (e) { $("#meta").textContent = "搜索失败：" + e.message; }
 }
 
 async function loadStats() {
   try {
     const s = await (await fetch("/stats")).json();
-    if (!$("#q").value) $("#meta").textContent = `库内 ${s.total_books} 本`;
+    if (!$("#q").value) $("#meta").textContent = `库内 作品 ${s.works.toLocaleString()} · 版本 ${s.editions.toLocaleString()} · 作者 ${s.authors.toLocaleString()}`;
   } catch (_) {}
 }
 async function randomBook() {
   try {
-    const r = await fetch("/books/random");
-    if (r.ok) location.href = "/book?isbn=" + (await r.json()).isbn_13;
-    else $("#meta").textContent = "库里还没有书，先去补一本。";
+    const r = await fetch("/random");
+    if (r.ok) { const e = await r.json(); location.href = "/work?id=" + encodeURIComponent(e.work_id); }
+    else $("#meta").textContent = "库里还没有书。";
   } catch (e) { $("#meta").textContent = "出错：" + e.message; }
 }
 

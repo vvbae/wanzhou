@@ -139,8 +139,12 @@ def upsert_book(
     isbn_13: str,
     record: dict[str, Any],
     field_sources: list[Any] | None = None,
+    commit: bool = True,
 ) -> None:
-    """插入/更新一本书 + 它的字段来源。record 是 SOURCE_FIELDS 的 dict。"""
+    """插入/更新一本书 + 它的字段来源。record 是 SOURCE_FIELDS 的 dict。
+
+    commit=False 时不提交，给批量导入按批 commit（几十万行别每行提交）。
+    """
     now = _now()
     existing = conn.execute(
         "SELECT created_at FROM books WHERE isbn_13=?", (isbn_13,)
@@ -182,7 +186,8 @@ def upsert_book(
                 "source=excluded.source, confidence=excluded.confidence, updated_at=excluded.updated_at",
                 (isbn_13, fs.field_name, fs.source, fs.confidence, now),
             )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 # ── 读 ────────────────────────────────────────────────────────────

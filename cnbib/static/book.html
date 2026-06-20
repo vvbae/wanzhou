@@ -3,99 +3,72 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>书目详情</title>
+<title>版本详情</title>
 <style>
   :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
-  * { box-sizing:border-box; }
   body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
          background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
-  a { color:inherit; }
+  a { color:#2c5b8f; text-decoration:none; }
+  .nav { font-size:14px; margin-bottom:12px; }
   .top { display:flex; gap:14px; }
   .top img { width:96px; height:136px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
-  h1 { font-size:21px; margin:0 0 2px; }
-  .subtitle { color:var(--sub); margin:0 0 6px; }
-  .nav { margin-bottom:14px; font-size:14px; }
+  h1 { font-size:20px; margin:0 0 4px; }
   table { width:100%; border-collapse:collapse; margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:11px; overflow:hidden; }
   td { padding:9px 11px; border-top:1px solid var(--line); vertical-align:top; }
   tr:first-child td { border-top:0; }
-  td.k { color:var(--sub); width:96px; font-size:14px; white-space:nowrap; }
+  td.k { color:var(--sub); width:84px; font-size:14px; white-space:nowrap; }
   td.v { font-size:15px; word-break:break-word; }
-  .src { display:inline-block; font-size:11px; border-radius:6px; padding:1px 7px; margin-left:6px; color:#fff; vertical-align:middle; }
-  .src.crowdsource { background:#2e7d32; }   /* 人工确认 */
-  .src.openlibrary { background:#2c5b8f; }
-  .src.google_books { background:#b5651d; }
-  .flag td.v { background:#fff8f7; }
-  .flag .k::after { content:" ⚑"; color:var(--accent); }
+  .src { display:inline-block; font-size:11px; border-radius:6px; padding:1px 7px; margin-left:6px; color:#fff; }
+  .src.crowdsource { background:#2e7d32; } .src.openlibrary { background:#2c5b8f; } .src.google_books { background:#b5651d; }
   .miss { color:#b9b9b3; }
-  .legend { font-size:12px; color:var(--sub); margin-top:10px; }
-  .legend .src { color:#fff; }
-  button { font:inherit; padding:11px 15px; border:0; border-radius:9px; background:var(--ink); color:#fff; font-weight:600; width:100%; margin-top:14px; }
+  .work { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; margin-top:16px; }
   .err { color:var(--accent); padding:24px 0; text-align:center; }
 </style>
 </head>
 <body>
-  <div class="nav"><a href="/">← 返回搜索</a></div>
+  <div class="nav"><a href="/">← 搜索</a></div>
   <div id="app"></div>
-
 <script>
-// 字段顺序与中文标签（与贡献页一致）
-const FIELDS = [
-  ["title","书名"], ["subtitle","副书名"], ["authors","作者"], ["translators","译者"],
-  ["original_title","原作名"], ["original_authors","原作者"],
-  ["publisher","出版社"], ["publish_date","出版日期"],
-  ["publish_year","出版年"], ["description","简介"], ["language","语言"],
-  ["series","丛书"], ["page_count","页数"], ["subjects","主题/标签"], ["clc","中图法分类号"],
-];
-const SRC_LABEL = { crowdsource:"人工", openlibrary:"OpenLibrary", google_books:"Google" };
+const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const EDFIELDS = [["isbn_10","ISBN-10"],["publisher","出版社"],["publish_date","出版日期"],
+  ["publish_year","出版年"],["translators","译者"],["page_count","页数"],["language","语言"],
+  ["series","丛书"],["format","开本"],["subtitle","副书名"]];
+const SRC = {crowdsource:"人工", openlibrary:"OpenLibrary", google_books:"Google"};
 
-function val(b, k) {
-  let v = b[k];
-  if (Array.isArray(v)) return v.join("、");
-  return (v == null || v === "") ? null : String(v);
-}
-function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function val(e,k){ let v=e[k]; if(Array.isArray(v)) return v.join("、"); return (v==null||v==="")?null:String(v); }
 
-function render(b) {
-  const needs = new Set(b.needs_chinese || []);
-  const cover = b.cover_url ? `<img src="${b.cover_url}" alt="" onerror="this.style.visibility='hidden'">` : "";
-  const rows = FIELDS.map(([k, label]) => {
-    const v = val(b, k);
-    const src = b.sources && b.sources[k];
-    const badge = src ? `<span class="src ${src}">${SRC_LABEL[src]||src}</span>` : "";
-    const cell = v == null ? `<span class="miss">—</span>` : esc(v) + badge;
-    const flag = needs.has(k) ? " flag" : "";
-    return `<tr class="${flag}"><td class="k">${label}</td><td class="v">${cell}</td></tr>`;
+function render(e){
+  const w = e.work || {};
+  const title = e.title || w.display_title || w.title || "(无标题)";
+  const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : "";
+  const rows = EDFIELDS.map(([k,label])=>{
+    const v = val(e,k); const src = e.sources && e.sources[k];
+    const badge = src?`<span class="src ${src}">${SRC[src]||src}</span>`:"";
+    return `<tr><td class="k">${label}</td><td class="v">${v==null?'<span class="miss">—</span>':esc(v)+badge}</td></tr>`;
   }).join("");
-
+  const authors = (w.authors||[]).map(a=>`<a href="/author?id=${encodeURIComponent(a.id)}">${esc(a.name)}</a>`).join("、");
   document.getElementById("app").innerHTML = `
     <div class="top">${cover}
-      <div><h1>${esc(b.title || "(无标题)")}</h1>
-        ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
-        <div style="color:var(--sub);font-size:13px">ISBN ${b.isbn_13}</div>
+      <div><h1>${esc(title)}</h1>
+        <div style="color:var(--sub);font-size:13px">ISBN ${e.isbn_13}</div>
+        <div style="font-size:14px;margin-top:6px">作者：${authors||"—"}</div>
       </div>
     </div>
     <table>${rows}</table>
-    <div class="legend">来源：<span class="src crowdsource">人工</span>
-      <span class="src openlibrary">OpenLibrary</span>
-      <span class="src google_books">Google</span>
-      ${needs.size ? ` · ⚑ = 仍是拼音/待补中文` : ""}</div>
-    <a href="/edit?isbn=${encodeURIComponent(b.isbn_13)}"><button>✍️ 补全 / 纠错这本书</button></a>`;
+    ${w.id?`<div class="work"><div style="color:var(--sub);font-size:13px">所属作品（共 ${(w.editions||[]).length} 个版本）</div>
+      <a href="/work?id=${encodeURIComponent(w.id)}" style="font-weight:600">${esc(w.display_title||w.title)} →</a>
+      ${w.title_original?`<div style="color:var(--sub);font-size:13px">原作名：${esc(w.title_original)}</div>`:""}
+      </div>`:""}`;
 }
-
-async function load() {
+async function load(){
   const isbn = new URLSearchParams(location.search).get("isbn");
-  if (!isbn) { document.getElementById("app").innerHTML = `<div class="err">缺少 ISBN 参数</div>`; return; }
-  document.getElementById("app").innerHTML = `<div style="color:var(--sub);padding:24px 0;text-align:center">加载中…（库里没有会实时聚合外部源）</div>`;
-  try {
-    const r = await fetch("/books/" + encodeURIComponent(isbn));
-    if (r.status === 404) {
-      document.getElementById("app").innerHTML = `<div class="err">各数据源都查不到这本书。<br>
-        <a href="/edit?isbn=${encodeURIComponent(isbn)}" style="color:var(--accent)">直接填写新建 →</a></div>`;
-      return;
-    }
-    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  if(!isbn){ document.getElementById("app").innerHTML='<div class="err">缺少 ISBN</div>'; return; }
+  try{
+    const r = await fetch("/books/"+encodeURIComponent(isbn));
+    if(r.status===404){ document.getElementById("app").innerHTML=`<div class="err">库里没有这本。<br>（加书功能即将上线）</div>`; return; }
+    if(!r.ok) throw new Error((await r.json()).detail||r.statusText);
     render(await r.json());
-  } catch (e) { document.getElementById("app").innerHTML = `<div class="err">加载失败：${e.message}</div>`; }
+  }catch(e){ document.getElementById("app").innerHTML=`<div class="err">加载失败：${e.message}</div>`; }
 }
 load();
 </script>

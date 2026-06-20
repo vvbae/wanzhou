@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-本文件是给 Claude Code 的项目上下文。每次开始工作前先读这里，严格遵守边界。
+本文件是给 Claude Code 的项目上下文。每次开始工作前先读这里 + `docs/design.md`（v0.2，权威设计），严格遵守边界。
 
 ## 项目是什么
-一个免费、开放的**中文书目查询 API**。给 ISBN，返回干净的中文书元数据（书名、作者、译者、出版社、封面、简介）。数据 CC0，代码开源。
+一个**社区共建、带审核的开放中文书目数据库**。人能逛/查/贡献：按书名作者搜索浏览、看作者简介和作品、看一本作品的不同版本；我们没有的书用户能加，信息不全能补，所有用户提交先人工审核才入库。数据 CC0，代码开源。
 
-**不是** OpenLibrary 克隆。目标是一个人能维护的、开发者真的会用的小而干净的 API。
+> 注意：这**不再**是 v0.1 那个"扁平 ISBN API"。定位见 `docs/design.md` 第 1 节。别再用"ISBN API / 不是 OL 克隆"那套老话给项目定型。
 
 ## 技术栈（已定，不要换）
 - Python 3.12+，FastAPI
@@ -14,64 +14,47 @@
 - Pydantic 做数据模型
 - 包管理用 uv
 
-## 硬边界：v1 明确不做（不要主动实现这些）
-- ❌ Work/Edition 归并抽象 —— v1 一个 ISBN 一条记录
-- ❌ 用户系统 / 登录 / 权限
-- ❌ 自建搜索引擎 —— 用 SQLite FTS5
-- ❌ 封面图片自托管 —— 只存 URL
-- ❌ 全文阅读 / 电子书
-- ❌ 书评 / 书单 / 社交功能
+## 三个核心动作（概念必须分清）
+- **找** 🔍：在已收录范围内搜索/浏览。**只查本地库，绝不实时打外部。**
+- **加** ➕：用户输 ISBN 加书。先自动拉 Google/OL；源也没有 → 用户手填。手填的进待审。
+- **改** ✏️：补全/纠错已有书或作者字段。进待审。
 
-如果某个需求会让"一个人周末做不完"，停下来问，不要擅自扩展。
+## 数据模型：三层（核心，改前先确认）
+`作者 author ──< work_authors >── 作品 work ──< 版本 edition（主键 isbn_13）`
+- **author**：name, name_original, aliases(JSON), bio, ol_key …
+- **work**：title, title_original, description, subjects(JSON), first_publish_year, ol_key …
+- **edition**（主键 isbn_13）：work_id, isbn_10, subtitle, **translators(JSON，版本级)**, publisher, publish_date, publish_year, cover_url, page_count, language, series, format, ol_key …
+- **work_authors**：work_id, author_id, role
+- **field_sources**（多态）：entity_type(author/work/edition), entity_id, field_name, source, confidence
+- **contributions**（贡献+审核）：status(pending/approved/rejected), target_type, target_id, kind(add/edit), payload(JSON), contributor_hint, reviewed_by …
 
-## 数据模型（核心，不要随意改）
+分层原则：译者=版本级；作者/原作名/简介=作品级；作者简介/原名=作者级。
 
-### books 表（主键 isbn_13）
-isbn_13(PK), isbn_10, title, subtitle, authors(JSON), translators(JSON),
-original_title, original_authors(JSON), publisher, publish_date, publish_year(INT),
-description, cover_url, page_count, language, series, subjects(JSON), clc,
-created_at, updated_at
+## 中文特殊处理（默认逻辑会错，已实现，复用）
+- 译者：从 Google authors / OL by_statement（`X zhu ; Y yi`）拆出来。
+- 原作名：OL `translation_of` 或 notes `Translation of: X`。
+- **外国作者两个都存**：`authors`=中文译名，`name_original`=原文名。
+- 语言代码：规范化 zh/zh-Hant/zh-CN，繁简可分。
+- publish_year：从日期串解析。
+- **全力避免拼音**：合并时有汉字的值优先（与源优先级无关）；剩余拼音标 needs_chinese 交众包。
 
-### field_sources 表
-记录每个字段的值来自哪个源：isbn_13, field_name, source, confidence, updated_at
+## 来源与可信度
+- 底子：OpenLibrary dump（editions+works+authors，本地解析，零 API，范围 ISBN 9787 大陆）；Google Books 按配额补中文标题/简介/封面。
+- 合并优先级：`crowdsource`（审核通过）> `openlibrary` > `google_books`。每个采用值写一条 field_sources。
+- **谁要审**：volunteer 手动新增/改字段。**谁不审**：dump 导入、Google 聚合、加书时从源自动拉到的（可信）。
 
-### edits 表
-众包修改日志：id(PK), isbn_13, field_name, old_value, new_value, contributor_hint, created_at
+## 审核 / 批量
+- 审核：contributions 走 pending → admin 审核台（**口令保护，不是用户系统，不破"不做登录"**）→ 通过才落库 + 写 field_sources(crowdsource)。
+- 批量：**不做自助上传**。页面公布 admin 邮箱 + CSV 格式，volunteer 邮件发来，管理员脚本入库。
 
-### FTS5
-在 books 上建虚拟表，索引 title / authors / publisher。
-
-## 中文书的特殊处理（重要，默认逻辑会错）
-- **译者**：Google Books 经常把译者混进 authors。必须把译者拆出来放 `translators`，不要堆在 authors 里。
-- **原作名**：译作要尽量提取 `original_title`。
-- **外国作者名（两个都存）**：`authors` 存**中文译名**（加西亚·马尔克斯），`original_authors` 存**原文名**（Gabriel García Márquez）。外部 API 只给得出原文名，聚合时自动把译作的原文作者名填进 `original_authors`；`authors` 里若仍是拉丁字母，标记为待补中文，靠众包补译名。
-- **语言代码**：统一规范化 zh / zh-Hant / zh-CN 的混乱，繁简要能区分。
-- **publish_year**：从各种格式的日期字符串里解析出纯年份。
-
-## 架构分层
-- `sources/` —— 每个数据源一个 adapter，统一输出内部 dict。base.py 定义统一结构。新增源只加文件，不动主流程。
-- `aggregator.py` —— 并发查所有源，按字段优先级合并。核心逻辑，要可单测。
-- `db.py` —— SQLite 读写 + FTS5。
-- `api.py` —— FastAPI 路由，薄层。
-- `schema.py` —— Pydantic 模型。
-
-## 字段合并优先级（aggregator 规则）
-缺失互补，冲突按优先级覆盖，每次采用写一条 field_sources：
-1. crowdsource（人工确认）—— 最高
-2. openlibrary（作者、ISBN 较规整）
-3. google_books（简介、封面通常最全）
-
-## 缓存策略
-查询时：先查本地 SQLite → 没有再打外部 API → 结果写回库。库随使用自然增长。
-
-## API 端点
-- GET /books/{isbn}
-- GET /search?q=&page=
-- GET /books/random
-- POST /contribute  （Phase 2 才做）
-- GET /stats
+## 仍然不做
+- ❌ 用户登录/账号体系（admin 用口令；contributor 用 IP/匿名）
+- ❌ 自建搜索引擎（用 FTS5）
+- ❌ 封面自托管（只存 URL）
+- ❌ 全文阅读/电子书
+- ❌ 书评/书单/社交
 
 ## 工作方式
-- 一次只做一个 phase，不要一口气把整个项目生成完。
-- 写完核心逻辑（尤其 aggregator）要配单元测试。
-- 数据合并优先级和中文清洗逻辑改动前先确认，不要想当然。
+- 一次推进一个阶段，核心逻辑配单测。
+- 数据模型、合并优先级、中文清洗、审核规则，改动前先确认，不要想当然。
+- 实现正在从 v0.1 扁平 books 迁移到三层：新数据层在 `cnbib/store.py`，旧 `cnbib/db.py` 待读侧切换后退役。

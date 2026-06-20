@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作品</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
+  body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
+  a { color:#2c5b8f; text-decoration:none; }
+  .nav { font-size:14px; margin-bottom:12px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .orig { color:var(--sub); margin:0 0 4px; }
+  .by { margin:2px 0 12px; }
+  .desc { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; }
+  .subjects span { display:inline-block; background:#eee; border-radius:6px; padding:1px 8px; margin:3px 4px 0 0; font-size:13px; color:var(--sub); }
+  h2 { font-size:15px; color:var(--sub); margin:20px 0 6px; }
+  .ed { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; color:var(--ink); }
+  .ed .t { font-weight:600; }
+  .ed .m { color:var(--sub); font-size:13px; }
+  .err { color:var(--accent); padding:24px 0; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="nav"><a href="/">← 搜索</a></div>
+  <div id="app"></div>
+<script>
+const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function authorLinks(a){ return (a||[]).map(x=>`<a href="/author?id=${encodeURIComponent(x.id)}">${esc(x.name)}</a>`).join("、"); }
+
+function render(w){
+  const title = w.display_title || w.title || "(无标题)";
+  const showOrig = w.title_original && w.title_original !== title;
+  const eds = (w.editions||[]).map(e=>{
+    const m = [e.publisher, e.publish_year, e.format, (e.translators||[]).length?("译: "+e.translators.join("、")):null].filter(Boolean).join(" · ");
+    return `<a class="ed" href="/book?isbn=${encodeURIComponent(e.isbn_13)}">
+      <div class="t">${esc(e.title)||title} <span class="m">ISBN ${e.isbn_13}</span></div>
+      <div class="m">${esc(m)}</div></a>`;
+  }).join("");
+  document.getElementById("app").innerHTML = `
+    <h1>${esc(title)}</h1>
+    ${showOrig?`<p class="orig">原作名：${esc(w.title_original)}</p>`:""}
+    <p class="by">作者：${authorLinks(w.authors) || '<span style="color:var(--sub)">—</span>'}</p>
+    ${w.description?`<div class="desc">${esc(w.description)}</div>`:""}
+    ${(w.subjects||[]).length?`<div class="subjects">${w.subjects.map(s=>`<span>${esc(s)}</span>`).join("")}</div>`:""}
+    <h2>版本（${(w.editions||[]).length}）</h2>
+    ${eds || '<div class="m">—</div>'}`;
+}
+async function load(){
+  const id = new URLSearchParams(location.search).get("id");
+  if(!id){ document.getElementById("app").innerHTML='<div class="err">缺少作品 id</div>'; return; }
+  try{
+    const r = await fetch("/works?id="+encodeURIComponent(id));
+    if(!r.ok) throw new Error((await r.json()).detail||r.statusText);
+    render(await r.json());
+  }catch(e){ document.getElementById("app").innerHTML=`<div class="err">加载失败：${e.message}</div>`; }
+}
+load();
+</script>
+</body>
+</html>

@@ -16,3 +16,7 @@ probe_raw.json
 
 # 环境
 .env
+
+# 本地数据库与 dump（不进库）
+data/
+*.txt.gz

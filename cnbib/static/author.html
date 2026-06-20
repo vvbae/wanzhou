@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作者</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
+  body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
+  a { color:#2c5b8f; text-decoration:none; }
+  .nav { font-size:14px; margin-bottom:12px; }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .orig { color:var(--sub); margin:0 0 10px; }
+  .bio { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; }
+  h2 { font-size:15px; color:var(--sub); margin:20px 0 6px; }
+  .w { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; color:var(--ink); }
+  .w .m { color:var(--sub); font-size:13px; }
+  .err { color:var(--accent); padding:24px 0; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="nav"><a href="/">← 搜索</a></div>
+  <div id="app"></div>
+<script>
+const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function render(a){
+  const showOrig = a.name_original && a.name_original !== a.name;
+  const works = (a.works||[]).map(w=>`<a class="w" href="/work?id=${encodeURIComponent(w.id)}">
+    <span style="font-weight:600">${esc(w.title)||"(无标题)"}</span>
+    ${w.first_publish_year?`<span class="m"> · ${w.first_publish_year}</span>`:""}</a>`).join("");
+  document.getElementById("app").innerHTML = `
+    <h1>${esc(a.name)||"(无名)"}</h1>
+    ${showOrig?`<p class="orig">${esc(a.name_original)}</p>`:""}
+    ${a.bio?`<div class="bio">${esc(a.bio)}</div>`:""}
+    <h2>作品（${(a.works||[]).length}）</h2>
+    ${works || '<div class="m">—</div>'}`;
+}
+async function load(){
+  const id = new URLSearchParams(location.search).get("id");
+  if(!id){ document.getElementById("app").innerHTML='<div class="err">缺少作者 id</div>'; return; }
+  try{
+    const r = await fetch("/authors?id="+encodeURIComponent(id));
+    if(!r.ok) throw new Error((await r.json()).detail||r.statusText);
+    render(await r.json());
+  }catch(e){ document.getElementById("app").innerHTML=`<div class="err">加载失败：${e.message}</div>`; }
+}
+load();
+</script>
+</body>
+</html>

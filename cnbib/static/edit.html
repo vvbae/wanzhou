@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>补全 / 纠错</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --ok:#2e7d32; --accent:#c0392b; }
+  body { margin:0; font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:560px; margin:0 auto; }
+  a { color:#2c5b8f; } .nav { font-size:14px; margin-bottom:12px; }
+  h1 { font-size:19px; }
+  label { display:block; font-size:13px; color:var(--sub); margin:12px 0 4px; }
+  input,textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font:inherit; }
+  textarea{min-height:70px;resize:vertical}
+  button { margin-top:16px; width:100%; padding:11px; border:0; border-radius:9px; background:var(--ink); color:#fff; font-weight:600; }
+  .msg{padding:10px 12px;border-radius:9px;margin:12px 0;display:none}
+  .msg.ok{background:#eaf4ea;color:var(--ok);display:block} .msg.err{background:#fbeceb;color:var(--accent);display:block}
+</style>
+</head>
+<body>
+  <div class="nav"><a href="/">← 搜索</a></div>
+  <h1 id="h">补全 / 纠错</h1>
+  <div id="msg" class="msg"></div>
+  <form id="f"></form>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s==null?"":String(s)).replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const FIELDS={
+  work:[["title","书名"],["title_original","原作名"],["description","简介","area"],["subjects","主题/标签","list"]],
+  edition:[["title","书名"],["subtitle","副书名"],["translators","译者","list"],["publisher","出版社"],
+    ["publish_date","出版日期"],["publish_year","出版年"],["language","语言"],["series","丛书"],["page_count","页数"],["format","开本"]],
+  author:[["name","姓名"],["name_original","原文名"],["bio","简介","area"],["aliases","别名","list"]],
+};
+const LIST=new Set(["subjects","translators","aliases"]);
+const P=new URLSearchParams(location.search);
+const type=P.get("type"); const id=P.get("id"); const isbn=P.get("isbn");
+let orig={};
+
+function msg(t,ok){const m=$("#msg");m.textContent=t;m.className="msg "+(ok?"ok":"err");}
+function disp(k,v){ if(Array.isArray(v))return v.join("、"); return v==null?"":String(v); }
+
+async function load(){
+  let url, tid;
+  if(type==="edition"||isbn){ url="/books/"+encodeURIComponent(isbn); tid=isbn; }
+  else if(type==="author"){ url="/authors?id="+encodeURIComponent(id); tid=id; }
+  else { url="/works?id="+encodeURIComponent(id); tid=id; }
+  const t = (isbn?"edition":type)||"work";
+  $("#h").textContent="补全 / 纠错 · "+({work:"作品",edition:"版本",author:"作者"}[t]);
+  try{
+    orig = await (await fetch(url)).json();
+    const box=$("#f"); box.innerHTML="";
+    for(const [k,label,kind] of FIELDS[t]){
+      const v=disp(k,orig[k]);
+      box.insertAdjacentHTML("beforeend",
+        `<label>${label}</label>`+(kind==="area"
+          ?`<textarea data-k="${k}">${esc(v)}</textarea>`
+          :`<input data-k="${k}" value="${esc(v)}">`));
+    }
+    box.insertAdjacentHTML("beforeend",`<button type="submit">提交（待审核）</button>`);
+    box.dataset.t=t; box.dataset.id=tid;
+  }catch(e){ msg("加载失败："+e.message,false); }
+}
+
+$("#f").addEventListener("submit",async ev=>{
+  ev.preventDefault();
+  const t=$("#f").dataset.t, tid=$("#f").dataset.id, payload={};
+  document.querySelectorAll("#f [data-k]").forEach(el=>{
+    const k=el.dataset.k; let v=el.value.trim();
+    let nv = LIST.has(k) ? v.split(/[，,、;]+/).map(x=>x.trim()).filter(Boolean) : (v===""?null:v);
+    if(k==="publish_year"||k==="page_count") nv = v?parseInt(v):null;
+    if(disp(k,nv)!==disp(k,orig[k])) payload[k]=nv;   // 只发改了的
+  });
+  if(!Object.keys(payload).length){msg("没有改动",false);return;}
+  try{
+    const r=await fetch("/contribute",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target_type:t,kind:"edit",target_id:tid,payload})});
+    const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
+    msg("已提交 "+Object.keys(payload).length+" 个字段，等管理员审核。谢谢！",true);
+  }catch(e){ msg("提交失败："+e.message,false); }
+});
+load();
+</script>
+</body>
+</html>

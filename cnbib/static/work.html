@@ -45,7 +45,8 @@ function render(w){
     ${w.description?`<div class="desc">${esc(w.description)}</div>`:""}
     ${(w.subjects||[]).length?`<div class="subjects">${w.subjects.map(s=>`<span>${esc(s)}</span>`).join("")}</div>`:""}
     <h2>版本（${(w.editions||[]).length}）</h2>
-    ${eds || '<div class="m">—</div>'}`;
+    ${eds || '<div class="m">—</div>'}
+    <p style="margin-top:16px"><a href="/edit?type=work&id=${encodeURIComponent(w.id)}">✏️ 补全 / 纠错这个作品</a></p>`;
 }
 async function load(){
   const id = new URLSearchParams(location.search).get("id");

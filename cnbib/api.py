@@ -10,13 +10,30 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from cnbib import store
+from cnbib.isbn import normalize
 
 DB_PATH = os.environ.get("CNBIB_DB", store.DEFAULT_DB)
+# admin 审核口令（环境变量；不设则审核接口一律拒绝——不是用户系统，就一个密钥）
+ADMIN_TOKEN = os.environ.get("CNBIB_ADMIN_TOKEN", "").strip()
 _STATIC = Path(__file__).parent / "static"
+
+
+def require_admin(x_admin_token: str = Header(default="")):
+    if not ADMIN_TOKEN or x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(403, "需要有效的 admin 口令（请配置 CNBIB_ADMIN_TOKEN）")
+
+
+class ContributionIn(BaseModel):
+    target_type: str            # book / work / edition / author
+    kind: str                   # add / edit
+    payload: dict
+    target_id: str | None = None
+    contributor_hint: str | None = None
 
 
 @asynccontextmanager
@@ -93,6 +110,47 @@ def get_stats(conn=Depends(get_conn)):
     return store.stats(conn)
 
 
+# ── 写侧：贡献（进待审）+ admin 审核 ───────────────────────────────
+@app.post("/contribute")
+def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
+    if c.kind not in ("add", "edit"):
+        raise HTTPException(400, "kind 只能是 add / edit")
+    if c.target_type not in ("book", "work", "edition", "author"):
+        raise HTTPException(400, "target_type 非法")
+    if not c.payload:
+        raise HTTPException(400, "payload 为空")
+    if c.kind == "add" and c.target_type == "book":
+        isbn = normalize(str(c.payload.get("isbn_13", "")))
+        if not isbn:
+            raise HTTPException(400, "加书需要合法 ISBN")
+        c.payload["isbn_13"] = isbn
+    if c.kind == "edit" and not c.target_id:
+        raise HTTPException(400, "改字段需要 target_id")
+    hint = (c.contributor_hint or "").strip() or (request.client.host if request.client else None)
+    cid = store.add_contribution(conn, target_type=c.target_type, kind=c.kind,
+                                 payload=c.payload, target_id=c.target_id, contributor_hint=hint)
+    return {"id": cid, "status": "pending", "message": "已提交，等管理员审核"}
+
+
+@app.get("/admin/contributions")
+def admin_list(status: str = "pending", _=Depends(require_admin), conn=Depends(get_conn)):
+    return store.list_contributions(conn, status)
+
+
+@app.post("/admin/contributions/{cid}/approve")
+def admin_approve(cid: int, _=Depends(require_admin), conn=Depends(get_conn)):
+    if not store.approve_contribution(conn, cid):
+        raise HTTPException(404, "没有这条待审贡献")
+    return {"ok": True}
+
+
+@app.post("/admin/contributions/{cid}/reject")
+def admin_reject(cid: int, note: str = "", _=Depends(require_admin), conn=Depends(get_conn)):
+    if not store.reject_contribution(conn, cid, note=note):
+        raise HTTPException(404, "没有这条待审贡献")
+    return {"ok": True}
+
+
 # ── 页面 ──────────────────────────────────────────────────────────
 def _page(name: str) -> FileResponse:
     return FileResponse(_STATIC / name)
@@ -116,3 +174,18 @@ def book_page():
 @app.get("/author", include_in_schema=False)
 def author_page():
     return _page("author.html")
+
+
+@app.get("/add", include_in_schema=False)
+def add_page():
+    return _page("add.html")
+
+
+@app.get("/edit", include_in_schema=False)
+def edit_page():
+    return _page("edit.html")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page():
+    return _page("admin.html")

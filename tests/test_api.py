@@ -78,6 +78,5 @@ class TestPages:
         _setup(tmp_path, monkeypatch)
         with TestClient(apimod.app) as c:
             assert "中文开放书目" in c.get("/").text
-            assert c.get("/work").status_code == 200
-            assert c.get("/book").status_code == 200
-            assert c.get("/author").status_code == 200
+            for p in ["/work", "/book", "/author", "/add", "/edit", "/admin"]:
+                assert c.get(p).status_code == 200, p

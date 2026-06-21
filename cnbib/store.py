@@ -371,6 +371,44 @@ def stats(conn) -> dict[str, Any]:
 
 
 # ── 贡献 / 审核 ────────────────────────────────────────────────────
+def create_book(conn, payload: dict, *, source: str = "crowdsource",
+                confidence: int = 100, commit: bool = True) -> str:
+    """从一条扁平 payload 落一整本书：作者 + 作品 + 版本，并标来源。
+
+    payload 关键字段：isbn_13(必填), title, authors(名字列表), translators,
+    publisher, publish_date/year, title_original, description, subjects, work_id(可选关联)。
+    供"加书"审核通过、以及将来从源站可信导入复用。
+    """
+    author_ids = []
+    for name in payload.get("authors") or []:
+        nm = str(name).strip()
+        if not nm:
+            continue
+        aid = new_id("a")
+        upsert_author(conn, {"name": nm}, id=aid, commit=False)
+        set_sources(conn, "author", aid, [_FS("name", source, confidence)], commit=False)
+        author_ids.append(aid)
+
+    wid = payload.get("work_id") or new_id("w")
+    wf = {k: payload[k] for k in ("title", "title_original", "description", "subjects",
+                                  "first_publish_year") if payload.get(k) not in (None, "", [])}
+    upsert_work(conn, wf, id=wid, author_ids=author_ids or None, commit=False, reindex=False)
+    set_sources(conn, "work", wid, [_FS(k, source, confidence) for k in wf], commit=False)
+
+    isbn = payload["isbn_13"]
+    ef = {k: payload[k] for k in ("title", "subtitle", "translators", "publisher",
+          "publish_date", "publish_year", "cover_url", "page_count", "language",
+          "series", "format", "isbn_10") if payload.get(k) not in (None, "", [])}
+    ef["work_id"] = wid
+    upsert_edition(conn, isbn, ef, commit=False)
+    set_sources(conn, "edition", isbn,
+                [_FS(k, source, confidence) for k in ef if k != "work_id"], commit=False)
+    _reindex_work(conn, wid)
+    if commit:
+        conn.commit()
+    return isbn
+
+
 def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
                      target_id: str | None = None, contributor_hint: str | None = None) -> int:
     cur = conn.execute(
@@ -411,7 +449,10 @@ def approve_contribution(conn, contrib_id: int, *, reviewer: str = "admin", note
     payload = json.loads(c["payload"]) if c.get("payload") else {}
     etype, tid, kind = c["target_type"], c["target_id"], c["kind"]
 
-    if kind == "add":
+    if kind == "add" and etype == "book":
+        # 整本新书：create_book 内部已建作者/作品/版本并标来源
+        tid = create_book(conn, payload, commit=False)
+    elif kind == "add":
         if etype == "edition":
             tid = payload["isbn_13"]
             upsert_edition(conn, tid, payload, commit=False)
@@ -419,14 +460,12 @@ def approve_contribution(conn, contrib_id: int, *, reviewer: str = "admin", note
             tid = upsert_work(conn, payload, commit=False)
         elif etype == "author":
             tid = upsert_author(conn, payload, commit=False)
-        fields = [f for f in payload if f in _FIELDS[etype]]
+        set_sources(conn, etype, tid, [_FS(f) for f in payload if f in _FIELDS[etype]], commit=False)
+        if etype == "edition" and payload.get("work_id"):
+            _reindex_work(conn, payload["work_id"])
     else:  # edit
         _upsert_partial(conn, etype, tid, payload)
-        fields = list(payload.keys())
-
-    set_sources(conn, etype, tid, [_FS(f) for f in fields], commit=False)
-    if etype == "edition" and payload.get("work_id"):
-        _reindex_work(conn, payload["work_id"])
+        set_sources(conn, etype, tid, [_FS(f) for f in payload if f in _FIELDS.get(etype, ())], commit=False)
     conn.execute(
         "UPDATE contributions SET status='approved', reviewed_by=?, review_note=?, reviewed_at=?, target_id=? WHERE id=?",
         (reviewer, note, _now(), tid, contrib_id),

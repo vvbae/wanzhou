@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>审核台</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --ok:#2e7d32; --accent:#c0392b; }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:720px; margin:0 auto; }
+  a{color:#2c5b8f} .nav{font-size:14px;margin-bottom:12px}
+  h1{font-size:19px}
+  .row{display:flex;gap:8px}
+  input{flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font:inherit}
+  button{padding:9px 13px;border:0;border-radius:8px;font:inherit;font-weight:600;color:#fff;background:var(--ink)}
+  button.ok{background:var(--ok)} button.no{background:var(--accent)}
+  .c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:10px}
+  .c .h{font-size:13px;color:var(--sub)}
+  .c pre{background:#faf9f7;border:1px solid var(--line);border-radius:7px;padding:8px;overflow:auto;font-size:13px;margin:6px 0}
+  .acts{display:flex;gap:8px;margin-top:6px}
+  .meta{color:var(--sub);font-size:13px;margin:12px 2px}
+</style>
+</head>
+<body>
+  <div class="nav"><a href="/">← 首页</a></div>
+  <h1>审核台</h1>
+  <div class="row">
+    <input id="tok" type="password" placeholder="admin 口令（CNBIB_ADMIN_TOKEN）">
+    <button id="load">加载待审</button>
+  </div>
+  <div id="meta" class="meta"></div>
+  <div id="list"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s==null?"":String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let TOK = localStorage.getItem("cnbib_admin_tok")||"";
+if(TOK) $("#tok").value=TOK;
+
+function hdr(){ return {"X-Admin-Token": $("#tok").value.trim()}; }
+
+async function load(){
+  TOK=$("#tok").value.trim(); localStorage.setItem("cnbib_admin_tok",TOK);
+  $("#meta").textContent="加载中…"; $("#list").innerHTML="";
+  try{
+    const r=await fetch("/admin/contributions",{headers:hdr()});
+    if(r.status===403){$("#meta").textContent="口令不对";return;}
+    const arr=await r.json();
+    $("#meta").textContent=`待审 ${arr.length} 条`;
+    $("#list").innerHTML = arr.map(card).join("") || '<div class="meta">没有待审的。</div>';
+  }catch(e){$("#meta").textContent="出错："+e.message;}
+}
+function card(c){
+  return `<div class="c" id="c${c.id}">
+    <div class="h">#${c.id} · ${c.kind==='add'?'新增':'修改'} ${c.target_type} ${c.target_id?('· '+esc(c.target_id)):''} · 贡献者 ${esc(c.contributor_hint||'匿名')}</div>
+    <pre>${esc(JSON.stringify(c.payload,null,2))}</pre>
+    <div class="acts">
+      <button class="ok" onclick="act(${c.id},'approve')">通过</button>
+      <button class="no" onclick="act(${c.id},'reject')">驳回</button>
+    </div></div>`;
+}
+async function act(id,what){
+  try{
+    const r=await fetch(`/admin/contributions/${id}/${what}`,{method:"POST",headers:hdr()});
+    if(!r.ok)throw new Error((await r.json()).detail||r.statusText);
+    const el=$("#c"+id); if(el) el.remove();
+  }catch(e){alert("失败："+e.message);}
+}
+$("#load").addEventListener("click",load);
+if(TOK) load();
+</script>
+</body>
+</html>

@@ -58,7 +58,8 @@ function render(e){
     ${w.id?`<div class="work"><div style="color:var(--sub);font-size:13px">所属作品（共 ${(w.editions||[]).length} 个版本）</div>
       <a href="/work?id=${encodeURIComponent(w.id)}" style="font-weight:600">${esc(w.display_title||w.title)} →</a>
       ${w.title_original?`<div style="color:var(--sub);font-size:13px">原作名：${esc(w.title_original)}</div>`:""}
-      </div>`:""}`;
+      </div>`:""}
+    <p style="margin-top:16px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a></p>`;
 }
 async function load(){
   const isbn = new URLSearchParams(location.search).get("isbn");

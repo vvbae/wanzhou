@@ -33,7 +33,10 @@
 </style>
 </head>
 <body>
-  <h1>中文开放书目</h1>
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <h1>中文开放书目</h1>
+    <span id="acct" style="font-size:13px"></span>
+  </div>
   <p class="sub">书名 / 作者搜索我们收录的书。作者 / 作品 / 版本三层。数据 CC0 开放。</p>
 
   <div class="row">
@@ -142,8 +145,22 @@ $("#go").addEventListener("click", () => search());
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 $("#rand").addEventListener("click", randomBook);
 $("#reshuffle").addEventListener("click", e => { e.preventDefault(); discover(true); });
+async function acct() {
+  try {
+    const me = await (await fetch("/auth/me")).json();
+    const a = $("#acct");
+    if (me.username) {
+      const review = (me.role==="reviewer"||me.role==="admin") ? ` · <a href="/admin" style="color:#2c5b8f">审核</a>` : "";
+      a.innerHTML = `${esc(me.username)}${review} · <a href="#" id="logout" style="color:var(--sub)">退出</a>`;
+      $("#logout").onclick = async e => { e.preventDefault(); await fetch("/auth/logout",{method:"POST"}); location.reload(); };
+    } else {
+      a.innerHTML = `<a href="/login" style="color:#2c5b8f">登录 / 注册</a>`;
+    }
+  } catch(_) {}
+}
 window.addEventListener("popstate", route);            // 后退/前进
 route();
+acct();
 </script>
 </body>
 </html>

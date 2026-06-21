@@ -32,7 +32,7 @@
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const EDFIELDS = [["isbn_10","ISBN-10"],["publisher","出版社"],["publish_date","出版日期"],
   ["publish_year","出版年"],["translators","译者"],["page_count","页数"],["language","语言"],
-  ["series","丛书"],["format","开本"],["subtitle","副书名"]];
+  ["series","丛书"],["format","装帧"],["subtitle","副书名"]];
 const SRC = {crowdsource:"人工", openlibrary:"OpenLibrary", google_books:"Google"};
 
 function val(e,k){ let v=e[k]; if(Array.isArray(v)) return v.join("、"); return (v==null||v==="")?null:String(v); }

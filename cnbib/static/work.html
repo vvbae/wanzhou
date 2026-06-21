@@ -46,7 +46,8 @@ function render(w){
     ${(w.tags||[]).length?`<div class="subjects">${w.tags.map(t=>`<a href="/tag?tag=${encodeURIComponent(t.slug)}"><span>${esc(t.name)}</span></a>`).join("")}</div>`:""}
     <h2>版本（${(w.editions||[]).length}）</h2>
     ${eds || '<div class="m">—</div>'}
-    <p style="margin-top:16px"><a href="/edit?type=work&id=${encodeURIComponent(w.id)}">✏️ 补全 / 纠错这个作品</a></p>`;
+    <p style="margin-top:16px"><a href="/edit?type=work&id=${encodeURIComponent(w.id)}">✏️ 补全 / 纠错作品信息</a>
+      <span style="color:var(--sub);font-size:13px">（书名/作者/简介/标签，所有版本共享；某一版的出版社/译者请点进对应版本改）</span></p>`;
 }
 async function load(){
   const id = new URLSearchParams(location.search).get("id");

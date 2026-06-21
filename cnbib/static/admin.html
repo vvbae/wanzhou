@@ -55,10 +55,17 @@ async function card(c){
       return `<tr><td class="k">${esc(k)}</td><td><span class="old">${esc(oldv)||"（空）"}</span> → <span class="new">${esc(disp(v))}</span></td></tr>`;
     }).join("");
   }
+  // 外部核对：拿 ISBN 或书名去 Google Books / 豆瓣 搜，帮你判断对错
+  const isbn = c.kind==="add" ? (c.payload.isbn_13||"") : (c.target_type==="edition"? c.target_id : "");
+  const q = encodeURIComponent(isbn || c.payload.title || c.payload.name || "");
+  const verify = q ? `<div class="h">核对：
+    <a href="https://www.google.com/search?tbm=bks&q=${q}" target="_blank">Google 图书</a> ·
+    <a href="https://search.douban.com/book/subject_search?search_text=${q}" target="_blank">豆瓣</a></div>` : "";
   return `<div class="c" id="c${c.id}">
     <div class="h">#${c.id} · 贡献者 ${esc(c.user_id||c.contributor_hint||"匿名")}</div>
     <div class="ttl">${head}</div>
     <table>${rows}</table>
+    ${verify}
     <div class="acts"><button class="ok" onclick="act(${c.id},'approve')">通过</button>
       <button class="no" onclick="act(${c.id},'reject')">驳回</button></div></div>`;
 }

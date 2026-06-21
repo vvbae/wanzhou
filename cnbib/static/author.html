@@ -36,7 +36,8 @@ function render(a){
     ${life?`<p class="orig">${esc(life)}</p>`:""}
     ${a.bio?`<div class="bio">${esc(a.bio)}</div>`:""}
     <h2>作品（${(a.works||[]).length}）</h2>
-    ${works || '<div class="m">—</div>'}`;
+    ${works || '<div class="m">—</div>'}
+    <p style="margin-top:16px"><a href="/edit?type=author&id=${encodeURIComponent(a.id)}">✏️ 补全 / 纠错这个作者</a></p>`;
 }
 async function load(){
   const id = new URLSearchParams(location.search).get("id");

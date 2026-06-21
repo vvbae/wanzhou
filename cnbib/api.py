@@ -10,7 +10,9 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import (
+    BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -42,9 +44,32 @@ ADMIN_TOKEN = os.environ.get("CNBIB_ADMIN_TOKEN", "").strip()
 _STATIC = Path(__file__).parent / "static"
 
 
-def require_admin(x_admin_token: str = Header(default="")):
-    if not ADMIN_TOKEN or x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(403, "需要有效的 admin 口令（请配置 CNBIB_ADMIN_TOKEN）")
+def get_conn():
+    conn = store.connect(DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def current_user(request: Request, conn=Depends(get_conn)) -> dict | None:
+    return store.get_session_user(conn, request.cookies.get("sid"))
+
+
+def require_reviewer(request: Request, x_admin_token: str = Header(default=""),
+                     conn=Depends(get_conn)) -> dict:
+    """审核权限：登录且角色 reviewer/admin；或带 bootstrap 口令（建首个 admin 用）。"""
+    if ADMIN_TOKEN and x_admin_token == ADMIN_TOKEN:
+        return {"username": "admin", "role": "admin"}
+    u = store.get_session_user(conn, request.cookies.get("sid"))
+    if u and u["role"] in ("reviewer", "admin"):
+        return u
+    raise HTTPException(403, "需要审核员登录")
+
+
+class Creds(BaseModel):
+    username: str
+    password: str
 
 
 class ContributionIn(BaseModel):
@@ -69,14 +94,6 @@ app = FastAPI(
     description="社区共建的开放中文书目数据库。作者/作品/版本三层。数据 CC0。",
     lifespan=lifespan,
 )
-
-
-def get_conn():
-    conn = store.connect(DB_PATH)
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 
 # ── JSON 端点 ──────────────────────────────────────────────────────
@@ -170,7 +187,42 @@ async def lookup(isbn: str):
     }
 
 
-# ── 写侧：贡献（进待审）+ admin 审核 ───────────────────────────────
+# ── 账号 / 会话 ────────────────────────────────────────────────────
+_COOKIE = dict(httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
+
+
+@app.post("/auth/register")
+def register(c: Creds, response: Response, conn=Depends(get_conn)):
+    try:
+        store.create_user(conn, c.username, c.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    response.set_cookie("sid", store.create_session(conn, c.username.strip()), **_COOKIE)
+    return {"username": c.username.strip(), "role": "user"}
+
+
+@app.post("/auth/login")
+def login(c: Creds, response: Response, conn=Depends(get_conn)):
+    u = store.verify_credentials(conn, c.username, c.password)
+    if not u:
+        raise HTTPException(401, "用户名或密码错误")
+    response.set_cookie("sid", store.create_session(conn, u["username"]), **_COOKIE)
+    return u
+
+
+@app.post("/auth/logout")
+def logout(request: Request, response: Response, conn=Depends(get_conn)):
+    store.delete_session(conn, request.cookies.get("sid"))
+    response.delete_cookie("sid")
+    return {"ok": True}
+
+
+@app.get("/auth/me")
+def whoami(user=Depends(current_user)):
+    return user or {}
+
+
+# ── 写侧：贡献（进待审）+ 审核 ─────────────────────────────────────
 @app.post("/contribute")
 def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
     if c.kind not in ("add", "edit"):
@@ -188,27 +240,29 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
         c.payload["isbn_13"] = isbn
     if c.kind == "edit" and not c.target_id:
         raise HTTPException(400, "改字段需要 target_id")
+    user = store.get_session_user(conn, request.cookies.get("sid"))
     hint = (c.contributor_hint or "").strip() or (request.client.host if request.client else None)
     cid = store.add_contribution(conn, target_type=c.target_type, kind=c.kind,
-                                 payload=c.payload, target_id=c.target_id, contributor_hint=hint)
-    return {"id": cid, "status": "pending", "message": "已提交，等管理员审核"}
+                                 payload=c.payload, target_id=c.target_id, contributor_hint=hint,
+                                 user_id=user["username"] if user else None)
+    return {"id": cid, "status": "pending", "message": "已提交，等审核"}
 
 
 @app.get("/admin/contributions")
-def admin_list(status: str = "pending", _=Depends(require_admin), conn=Depends(get_conn)):
+def admin_list(status: str = "pending", reviewer=Depends(require_reviewer), conn=Depends(get_conn)):
     return store.list_contributions(conn, status)
 
 
 @app.post("/admin/contributions/{cid}/approve")
-def admin_approve(cid: int, _=Depends(require_admin), conn=Depends(get_conn)):
-    if not store.approve_contribution(conn, cid):
+def admin_approve(cid: int, reviewer=Depends(require_reviewer), conn=Depends(get_conn)):
+    if not store.approve_contribution(conn, cid, reviewer=reviewer["username"]):
         raise HTTPException(404, "没有这条待审贡献")
     return {"ok": True}
 
 
 @app.post("/admin/contributions/{cid}/reject")
-def admin_reject(cid: int, note: str = "", _=Depends(require_admin), conn=Depends(get_conn)):
-    if not store.reject_contribution(conn, cid, note=note):
+def admin_reject(cid: int, note: str = "", reviewer=Depends(require_reviewer), conn=Depends(get_conn)):
+    if not store.reject_contribution(conn, cid, reviewer=reviewer["username"], note=note):
         raise HTTPException(404, "没有这条待审贡献")
     return {"ok": True}
 
@@ -251,6 +305,11 @@ def edit_page():
 @app.get("/admin", include_in_schema=False)
 def admin_page():
     return _page("admin.html")
+
+
+@app.get("/login", include_in_schema=False)
+def login_page():
+    return _page("login.html")
 
 
 @app.get("/tag", include_in_schema=False)

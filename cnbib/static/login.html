@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 / 注册</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --ok:#2e7d32; --accent:#c0392b; }
+  body { margin:0; font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:420px; margin:0 auto; }
+  a{color:#2c5b8f} .nav{font-size:14px;margin-bottom:12px}
+  h1{font-size:20px}
+  label{display:block;font-size:13px;color:var(--sub);margin:12px 0 4px}
+  input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .row{display:flex;gap:8px;margin-top:16px}
+  button{flex:1;padding:11px;border:0;border-radius:9px;font:inherit;font-weight:600}
+  #login{background:var(--ink);color:#fff} #reg{background:#fff;border:1px solid var(--line)}
+  .msg{padding:10px 12px;border-radius:9px;margin-top:12px;display:none}
+  .msg.ok{background:#eaf4ea;color:var(--ok);display:block} .msg.err{background:#fbeceb;color:var(--accent);display:block}
+  .sub{color:var(--sub);font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+  <div class="nav"><a href="/">← 首页</a></div>
+  <h1>登录 / 注册</h1>
+  <p class="sub">登录后贡献会归到你名下；匿名也能贡献。审核员请用管理员给的账号登录。</p>
+  <div id="msg" class="msg"></div>
+  <label>用户名</label><input id="u" autocomplete="username">
+  <label>密码（≥6 位）</label><input id="p" type="password" autocomplete="current-password">
+  <div class="row"><button id="login">登录</button><button id="reg">注册</button></div>
+<script>
+const $=s=>document.querySelector(s);
+const next=new URLSearchParams(location.search).get("next")||"/";
+function msg(t,ok){const m=$("#msg");m.textContent=t;m.className="msg "+(ok?"ok":"err");}
+async function go(path){
+  const body=JSON.stringify({username:$("#u").value.trim(),password:$("#p").value});
+  try{
+    const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
+    const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
+    msg("成功，正在跳转…",true); location.href=next;
+  }catch(e){ msg(e.message,false); }
+}
+$("#login").onclick=()=>go("/auth/login");
+$("#reg").onclick=()=>go("/auth/register");
+</script>
+</body>
+</html>

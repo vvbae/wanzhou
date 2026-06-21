@@ -10,8 +10,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import secrets
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -97,6 +99,13 @@ def init_db(conn: sqlite3.Connection) -> None:
             payload TEXT, contributor_hint TEXT,
             reviewed_by TEXT, review_note TEXT, created_at TEXT, reviewed_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY, password_hash TEXT,
+            role TEXT DEFAULT 'user', created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY, username TEXT, created_at TEXT
+        );
         CREATE TABLE IF NOT EXISTS tags (
             slug TEXT PRIMARY KEY, name TEXT, created_at TEXT
         );
@@ -128,9 +137,11 @@ def _ensure_columns(conn) -> None:
             if col not in have:
                 typ = "INTEGER" if col in _INT_COLS else "TEXT"
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
-    # 富化标记列（不在 _FIELDS 里）
+    # 不在 _FIELDS 里的附加列
     if "enriched" not in {r["name"] for r in conn.execute("PRAGMA table_info(editions)")}:
         conn.execute("ALTER TABLE editions ADD COLUMN enriched TEXT")
+    if "user_id" not in {r["name"] for r in conn.execute("PRAGMA table_info(contributions)")}:
+        conn.execute("ALTER TABLE contributions ADD COLUMN user_id TEXT")
 
 
 # ── JSON 助手 ──────────────────────────────────────────────────────
@@ -421,6 +432,72 @@ def needs_enrichment(conn, limit: int = 500) -> list[str]:
     return [r["isbn_13"] for r in rows if not has_cjk(r["title"])][:limit]
 
 
+# ── 账号 / 会话 ────────────────────────────────────────────────────
+def hash_password(pw: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), 200_000).hex()
+    return f"pbkdf2$200000${salt}${h}"
+
+
+def verify_password(pw: str, stored: str) -> bool:
+    try:
+        _algo, iters, salt, h = stored.split("$")
+        calc = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), int(iters)).hex()
+        return secrets.compare_digest(calc, h)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def create_user(conn, username: str, password: str, role: str = "user") -> dict:
+    u = username.strip()
+    if not u or len(password) < 6:
+        raise ValueError("用户名不能为空，密码至少 6 位")
+    if conn.execute("SELECT 1 FROM users WHERE username=?", (u,)).fetchone():
+        raise ValueError("用户名已被占用")
+    conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
+                 (u, hash_password(password), role, _now()))
+    conn.commit()
+    return {"username": u, "role": role}
+
+
+def set_role(conn, username: str, role: str) -> bool:
+    cur = conn.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def verify_credentials(conn, username: str, password: str) -> dict | None:
+    row = conn.execute("SELECT username, password_hash, role FROM users WHERE username=?",
+                       (username.strip(),)).fetchone()
+    if row and verify_password(password, row["password_hash"]):
+        return {"username": row["username"], "role": row["role"]}
+    return None
+
+
+def create_session(conn, username: str) -> str:
+    token = secrets.token_urlsafe(32)
+    conn.execute("INSERT INTO sessions (token, username, created_at) VALUES (?,?,?)",
+                 (token, username, _now()))
+    conn.commit()
+    return token
+
+
+def get_session_user(conn, token: str | None) -> dict | None:
+    if not token:
+        return None
+    row = conn.execute(
+        "SELECT u.username, u.role FROM sessions s JOIN users u ON u.username=s.username "
+        "WHERE s.token=?", (token,)
+    ).fetchone()
+    return {"username": row["username"], "role": row["role"]} if row else None
+
+
+def delete_session(conn, token: str | None) -> None:
+    if token:
+        conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+        conn.commit()
+
+
 # ── 标签（实体 + 多对多，可按标签浏览）──────────────────────────────
 def tag_slug(name: str) -> str:
     """归一成 slug：去首尾空格、空白折叠、小写（中文不受影响）。用于去重与 URL。"""
@@ -602,11 +679,13 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
 
 
 def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
-                     target_id: str | None = None, contributor_hint: str | None = None) -> int:
+                     target_id: str | None = None, contributor_hint: str | None = None,
+                     user_id: str | None = None) -> int:
     cur = conn.execute(
-        "INSERT INTO contributions (status, target_type, target_id, kind, payload, contributor_hint, created_at) "
-        "VALUES ('pending', ?, ?, ?, ?, ?, ?)",
-        (target_type, target_id, kind, json.dumps(payload, ensure_ascii=False), contributor_hint, _now()),
+        "INSERT INTO contributions (status, target_type, target_id, kind, payload, "
+        "contributor_hint, user_id, created_at) VALUES ('pending', ?, ?, ?, ?, ?, ?, ?)",
+        (target_type, target_id, kind, json.dumps(payload, ensure_ascii=False),
+         contributor_hint, user_id, _now()),
     )
     conn.commit()
     return cur.lastrowid

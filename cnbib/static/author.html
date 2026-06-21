@@ -26,12 +26,14 @@
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function render(a){
   const showOrig = a.name_original && a.name_original !== a.name;
+  const life = (a.birth_date || a.death_date) ? `${a.birth_date||""} – ${a.death_date||""}` : "";
   const works = (a.works||[]).map(w=>`<a class="w" href="/work?id=${encodeURIComponent(w.id)}">
     <span style="font-weight:600">${esc(w.title)||"(无标题)"}</span>
     ${w.first_publish_year?`<span class="m"> · ${w.first_publish_year}</span>`:""}</a>`).join("");
   document.getElementById("app").innerHTML = `
     <h1>${esc(a.name)||"(无名)"}</h1>
     ${showOrig?`<p class="orig">${esc(a.name_original)}</p>`:""}
+    ${life?`<p class="orig">${esc(life)}</p>`:""}
     ${a.bio?`<div class="bio">${esc(a.bio)}</div>`:""}
     <h2>作品（${(a.works||[]).length}）</h2>
     ${works || '<div class="m">—</div>'}`;

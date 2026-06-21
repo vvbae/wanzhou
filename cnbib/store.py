@@ -362,6 +362,29 @@ def _work_hit(conn, row: sqlite3.Row) -> dict:
     }
 
 
+def random_showcase(conn, n: int = 8) -> list[dict]:
+    """首页展示用：随机若干本（有封面、优先中文标题），返回作品卡片（去重到作品）。"""
+    rows = conn.execute(
+        "SELECT work_id, title, cover_url FROM editions "
+        "WHERE cover_url IS NOT NULL AND work_id IS NOT NULL AND title IS NOT NULL "
+        "ORDER BY RANDOM() LIMIT ?", (n * 25,)
+    ).fetchall()
+    cjk, rest, seen = [], [], set()
+    for r in rows:
+        wid = r["work_id"]
+        if wid in seen:
+            continue
+        seen.add(wid)
+        wt = conn.execute("SELECT title FROM works WHERE id=?", (wid,)).fetchone()
+        title = _display_title(conn, wid, wt["title"] if wt else r["title"]) or r["title"]
+        card = {"work_id": wid, "title": title, "cover_url": r["cover_url"],
+                "authors": _author_names(conn, wid)}
+        (cjk if has_cjk(title) else rest).append(card)
+        if len(cjk) >= n:
+            break
+    return (cjk + rest)[:n]   # 中文标题优先，不够再用拼音补
+
+
 def random_edition(conn) -> dict | None:
     row = conn.execute("SELECT isbn_13 FROM editions ORDER BY RANDOM() LIMIT 1").fetchone()
     return get_edition(conn, row["isbn_13"]) if row else None

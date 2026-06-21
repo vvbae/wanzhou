@@ -20,7 +20,8 @@ def _setup(tmp_path, monkeypatch):
                             id="OL5781992W", author_ids=[aid])
     store.upsert_edition(conn, "9787208061644", {
         "work_id": wid, "title": "追风筝的人", "translators": ["李继宏"],
-        "publisher": "上海人民出版社", "publish_year": 2006})
+        "publisher": "上海人民出版社", "publish_year": 2006,
+        "cover_url": "https://covers.openlibrary.org/b/id/9248248-L.jpg"})
     store.set_sources(conn, "edition", "9787208061644", [store._FS("translators")])
     store.rebuild_fts(conn)
     conn.close()
@@ -59,6 +60,14 @@ class TestJSON:
             d = c.get("/search", params={"q": "追风筝的人"}).json()
             assert d["total"] == 1
             assert d["results"][0]["title"] == "追风筝的人"
+
+    def test_random_books_showcase(self, tmp_path, monkeypatch):
+        _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            d = c.get("/random_books", params={"n": 8}).json()
+            assert len(d["results"]) == 1            # 库里就一本带封面
+            b = d["results"][0]
+            assert b["title"] == "追风筝的人" and b["cover_url"] and b["work_id"]
 
     def test_stats(self, tmp_path, monkeypatch):
         _setup(tmp_path, monkeypatch)

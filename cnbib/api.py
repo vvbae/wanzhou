@@ -110,6 +110,11 @@ def random_edition(conn=Depends(get_conn)):
     return e
 
 
+@app.get("/random_books")
+def random_books(n: int = Query(8, ge=1, le=24), conn=Depends(get_conn)):
+    return {"results": store.random_showcase(conn, n)}
+
+
 @app.get("/stats")
 def get_stats(conn=Depends(get_conn)):
     return store.stats(conn)

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -96,9 +97,17 @@ def init_db(conn: sqlite3.Connection) -> None:
             payload TEXT, contributor_hint TEXT,
             reviewed_by TEXT, review_note TEXT, created_at TEXT, reviewed_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS tags (
+            slug TEXT PRIMARY KEY, name TEXT, created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS work_tags (
+            work_id TEXT NOT NULL, tag_slug TEXT NOT NULL,
+            PRIMARY KEY (work_id, tag_slug)
+        );
         CREATE INDEX IF NOT EXISTS idx_ed_work ON editions(work_id);
         CREATE INDEX IF NOT EXISTS idx_wa_author ON work_authors(author_id);
         CREATE INDEX IF NOT EXISTS idx_contrib_status ON contributions(status);
+        CREATE INDEX IF NOT EXISTS idx_wt_tag ON work_tags(tag_slug);
         """
     )
     _ensure_columns(conn)
@@ -306,6 +315,7 @@ def get_work(conn, work_id: str) -> dict | None:
         ).fetchall()
     ]
     w["display_title"] = _display_title(conn, work_id, w.get("title"))
+    w["tags"] = tags_for_work(conn, work_id)
     w["sources"] = get_sources(conn, "work", work_id)
     return w
 
@@ -411,6 +421,77 @@ def needs_enrichment(conn, limit: int = 500) -> list[str]:
     return [r["isbn_13"] for r in rows if not has_cjk(r["title"])][:limit]
 
 
+# ── 标签（实体 + 多对多，可按标签浏览）──────────────────────────────
+def tag_slug(name: str) -> str:
+    """归一成 slug：去首尾空格、空白折叠、小写（中文不受影响）。用于去重与 URL。"""
+    return re.sub(r"\s+", " ", str(name).strip()).lower()
+
+
+def add_tags_to_work(conn, work_id: str, names, *, commit: bool = True) -> None:
+    now = _now()
+    for name in names or []:
+        nm = re.sub(r"\s+", " ", str(name).strip())
+        if not nm:
+            continue
+        slug = tag_slug(nm)
+        conn.execute("INSERT OR IGNORE INTO tags (slug, name, created_at) VALUES (?,?,?)",
+                     (slug, nm, now))
+        conn.execute("INSERT OR IGNORE INTO work_tags (work_id, tag_slug) VALUES (?,?)",
+                     (work_id, slug))
+    if commit:
+        conn.commit()
+
+
+def tags_for_work(conn, work_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT t.slug, t.name FROM work_tags wt JOIN tags t ON t.slug=wt.tag_slug "
+        "WHERE wt.work_id=? ORDER BY t.name", (work_id,)
+    ).fetchall()
+    return [{"slug": r["slug"], "name": r["name"]} for r in rows]
+
+
+def search_tags(conn, q: str, limit: int = 10) -> list[dict]:
+    """标签自动补全：按名字匹配，按使用量排序。"""
+    q = q.strip()
+    if not q:
+        return []
+    rows = conn.execute(
+        "SELECT t.slug, t.name, count(wt.work_id) c FROM tags t "
+        "JOIN work_tags wt ON wt.tag_slug=t.slug WHERE t.name LIKE ? "
+        "GROUP BY t.slug ORDER BY c DESC LIMIT ?", (f"%{q}%", limit)
+    ).fetchall()
+    return [{"slug": r["slug"], "name": r["name"], "count": r["c"]} for r in rows]
+
+
+def works_by_tag(conn, slug: str, page: int = 1, page_size: int = 20) -> tuple[int, str, list[dict]]:
+    slug = tag_slug(slug)
+    name_row = conn.execute("SELECT name FROM tags WHERE slug=?", (slug,)).fetchone()
+    if not name_row:
+        return 0, slug, []
+    total = conn.execute("SELECT count(*) FROM work_tags WHERE tag_slug=?", (slug,)).fetchone()[0]
+    offset = (max(1, page) - 1) * page_size
+    rows = conn.execute(
+        "SELECT w.* FROM work_tags wt JOIN works w ON w.id=wt.work_id "
+        "WHERE wt.tag_slug=? LIMIT ? OFFSET ?", (slug, page_size, offset)
+    ).fetchall()
+    return total, name_row["name"], [_work_hit(conn, r) for r in rows]
+
+
+def build_tags_from_subjects(conn, *, batch: int = 5000) -> int:
+    """迁移：把所有 works.subjects 拆成 tags + work_tags。返回处理的作品数。"""
+    conn.execute("PRAGMA synchronous=OFF")
+    n = 0
+    for row in conn.execute("SELECT id, subjects FROM works WHERE subjects IS NOT NULL"):
+        subs = json.loads(row["subjects"]) if row["subjects"] else []
+        if subs:
+            add_tags_to_work(conn, row["id"], subs, commit=False)
+        n += 1
+        if n % batch == 0:
+            conn.commit()
+    conn.commit()
+    return n
+
+
 def search_authors(conn, q: str, limit: int = 6) -> list[dict]:
     """按姓名搜作者（搜"曹雪芹"应先出作者本人，而不是书）。"""
     q = q.strip()
@@ -504,6 +585,8 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
                                       "first_publish_year") if payload.get(k) not in (None, "", [])}
         upsert_work(conn, wf, id=wid, author_ids=author_ids or None, commit=False, reindex=False)
         set_sources(conn, "work", wid, [_FS(k, source, confidence) for k in wf], commit=False)
+        if payload.get("subjects"):
+            add_tags_to_work(conn, wid, payload["subjects"], commit=False)
 
     ef = {k: payload[k] for k in ("title", "subtitle", "translators", "publisher",
           "publish_date", "publish_year", "cover_url", "page_count", "language",
@@ -575,6 +658,9 @@ def approve_contribution(conn, contrib_id: int, *, reviewer: str = "admin", note
     else:  # edit
         _upsert_partial(conn, etype, tid, payload)
         set_sources(conn, etype, tid, [_FS(f) for f in payload if f in _FIELDS.get(etype, ())], commit=False)
+        if etype == "work" and "subjects" in payload:   # 同步标签
+            conn.execute("DELETE FROM work_tags WHERE work_id=?", (tid,))
+            add_tags_to_work(conn, tid, payload.get("subjects") or [], commit=False)
     conn.execute(
         "UPDATE contributions SET status='approved', reviewed_by=?, review_note=?, reviewed_at=?, target_id=? WHERE id=?",
         (reviewer, note, _now(), tid, contrib_id),

@@ -116,6 +116,37 @@ class TestEnrichment:
         assert "9787544253994" in picks and "9787536692930" not in picks
 
 
+class TestTags:
+    def test_tags_dedup_and_browse(self, tmp_path):
+        conn = _conn(tmp_path)
+        w1 = store.upsert_work(conn, {"title": "三体"}, id="w1")
+        w2 = store.upsert_work(conn, {"title": "球状闪电"}, id="w2")
+        store.add_tags_to_work(conn, w1, ["科幻", "中国文学"])
+        store.add_tags_to_work(conn, w2, ["科幻 ", "刘慈欣"])   # "科幻 " 归一到同一标签
+        # 作品带标签
+        assert {t["name"] for t in store.tags_for_work(conn, w1)} == {"科幻", "中国文学"}
+        # 按标签浏览：科幻 → 两本
+        total, name, results = store.works_by_tag(conn, "科幻")
+        assert total == 2 and name == "科幻"
+        assert {r["title"] for r in results} == {"三体", "球状闪电"}
+        # 自动补全
+        assert store.search_tags(conn, "科")[0]["name"] == "科幻"
+
+    def test_get_work_includes_tags(self, tmp_path):
+        conn = _conn(tmp_path)
+        wid = store.upsert_work(conn, {"title": "x"}, id="w1")
+        store.add_tags_to_work(conn, wid, ["历史"])
+        assert store.get_work(conn, wid)["tags"][0]["slug"] == "历史"
+
+    def test_build_from_subjects(self, tmp_path):
+        conn = _conn(tmp_path)
+        store.upsert_work(conn, {"title": "x", "subjects": ["小说", "经典"]}, id="w1")
+        store.upsert_work(conn, {"title": "y", "subjects": ["小说"]}, id="w2")
+        store.build_tags_from_subjects(conn)
+        total, _, _ = store.works_by_tag(conn, "小说")
+        assert total == 2
+
+
 class TestStats:
     def test_counts(self, tmp_path):
         conn = _conn(tmp_path); _seed(conn)

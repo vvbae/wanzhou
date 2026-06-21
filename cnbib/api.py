@@ -121,6 +121,18 @@ def search(
             "results": results, "authors": authors}
 
 
+@app.get("/tags")
+def tags_autocomplete(q: str = Query(..., min_length=1), conn=Depends(get_conn)):
+    return {"results": store.search_tags(conn, q)}
+
+
+@app.get("/tag_works")
+def tag_works(tag: str = Query(...), page: int = Query(1, ge=1),
+              page_size: int = Query(20, ge=1, le=100), conn=Depends(get_conn)):
+    total, name, results = store.works_by_tag(conn, tag, page, page_size)
+    return {"tag": tag, "name": name, "total": total, "results": results}
+
+
 @app.get("/random")
 def random_edition(conn=Depends(get_conn)):
     e = store.random_edition(conn)
@@ -239,6 +251,11 @@ def edit_page():
 @app.get("/admin", include_in_schema=False)
 def admin_page():
     return _page("admin.html")
+
+
+@app.get("/tag", include_in_schema=False)
+def tag_page():
+    return _page("tag.html")
 
 
 @app.get("/about", include_in_schema=False)

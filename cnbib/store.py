@@ -362,6 +362,25 @@ def _work_hit(conn, row: sqlite3.Row) -> dict:
     }
 
 
+def search_authors(conn, q: str, limit: int = 6) -> list[dict]:
+    """按姓名搜作者（搜"曹雪芹"应先出作者本人，而不是书）。"""
+    q = q.strip()
+    if not q:
+        return []
+    rows = conn.execute(
+        "SELECT id, name, birth_date, death_date FROM authors "
+        "WHERE name LIKE ? ORDER BY length(name) LIMIT ?", (f"%{q}%", limit)
+    ).fetchall()
+    out = []
+    for r in rows:
+        cnt = conn.execute(
+            "SELECT count(*) FROM work_authors WHERE author_id=?", (r["id"],)
+        ).fetchone()[0]
+        out.append({"id": r["id"], "name": r["name"], "birth_date": r["birth_date"],
+                    "death_date": r["death_date"], "work_count": cnt})
+    return out
+
+
 def random_showcase(conn, n: int = 8) -> list[dict]:
     """首页展示用：随机若干本（有封面、优先中文标题），返回作品卡片（去重到作品）。"""
     rows = conn.execute(

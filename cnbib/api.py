@@ -99,7 +99,9 @@ def search(
     conn=Depends(get_conn),
 ):
     total, results = store.search(conn, q, page, page_size)
-    return {"query": q, "page": page, "page_size": page_size, "total": total, "results": results}
+    authors = store.search_authors(conn, q) if page == 1 else []
+    return {"query": q, "page": page, "page_size": page_size, "total": total,
+            "results": results, "authors": authors}
 
 
 @app.get("/random")
@@ -220,3 +222,18 @@ def edit_page():
 @app.get("/admin", include_in_schema=False)
 def admin_page():
     return _page("admin.html")
+
+
+@app.get("/about", include_in_schema=False)
+def about_page():
+    return _page("about.html")
+
+
+@app.get("/contact", include_in_schema=False)
+def contact_page():
+    return _page("contact.html")
+
+
+@app.get("/privacy", include_in_schema=False)
+def privacy_page():
+    return _page("privacy.html")

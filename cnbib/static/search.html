@@ -50,7 +50,12 @@
     <div class="secttl">随便看看 · <a href="#" id="reshuffle" style="color:#2c5b8f">换一批</a></div>
     <div id="grid" class="grid"></div>
   </div>
-  <footer>开放中文书目 · 数据 CC0 · 无需登录</footer>
+  <footer>
+    <a href="/about" style="color:var(--sub)">关于</a> ·
+    <a href="/contact" style="color:var(--sub)">联系</a> ·
+    <a href="/privacy" style="color:var(--sub)">隐私</a><br>
+    开放中文书目 · 数据 CC0
+  </footer>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -64,12 +69,13 @@ function workCard(w) {
     <div class="m">${esc(meta)}</div></div></a>`;
 }
 
-async function search() {
+async function search(push) {
   const q = $("#q").value.trim();
   if (!q) return;
   if (ISBN_RE.test(q) && q.replace(/[-Xx]/g,"").length >= 10) {  // 像 ISBN → 版本页
     location.href = "/book?isbn=" + encodeURIComponent(q); return;
   }
+  if (push !== false) history.pushState({q}, "", "?q=" + encodeURIComponent(q));  // 写进 URL，后退可恢复
   $("#meta").textContent = "搜索中…"; $("#results").innerHTML = "";
   $("#discover").style.display = "none";        // 搜索时收起封面墙
   try {
@@ -81,7 +87,15 @@ async function search() {
       return;
     }
     $("#meta").textContent = `共 ${d.total} 条`;
-    $("#results").innerHTML = d.results.map(workCard).join("");
+    const authorBlock = (d.authors && d.authors.length) ? (
+      `<div class="secttl">作者</div>` + d.authors.map(a => {
+        const life = (a.birth_date||a.death_date) ? ` (${a.birth_date||""}–${a.death_date||""})` : "";
+        return `<a href="/author?id=${encodeURIComponent(a.id)}"><div class="hit">
+          <div class="t">👤 ${esc(a.name)}${esc(life)}</div>
+          <div class="m">${a.work_count} 部作品</div></div></a>`;
+      }).join("") + `<div class="secttl">书</div>`
+    ) : "";
+    $("#results").innerHTML = authorBlock + d.results.map(workCard).join("");
   } catch (e) { $("#meta").textContent = "搜索失败：" + e.message; }
 }
 
@@ -99,22 +113,37 @@ async function randomBook() {
   } catch (e) { $("#meta").textContent = "出错：" + e.message; }
 }
 
-async function discover() {
+function renderGrid(items){
+  $("#grid").innerHTML = items.map(b => `
+    <a class="gc" href="/work?id=${encodeURIComponent(b.work_id)}">
+      <img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="t">${esc(b.title)||""}</div></a>`).join("");
+}
+async function discover(force) {
+  // 缓存到 sessionStorage：从书页返回时不再刷新成别的
+  if (!force) {
+    const cached = sessionStorage.getItem("cnbib_discover");
+    if (cached) { renderGrid(JSON.parse(cached)); return; }
+  }
   try {
     const d = await (await fetch("/random_books?n=8")).json();
-    $("#grid").innerHTML = d.results.map(b => `
-      <a class="gc" href="/work?id=${encodeURIComponent(b.work_id)}">
-        <img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">
-        <div class="t">${esc(b.title)||""}</div></a>`).join("");
+    sessionStorage.setItem("cnbib_discover", JSON.stringify(d.results));
+    renderGrid(d.results);
   } catch (_) { $("#discover").style.display = "none"; }
 }
 
-$("#go").addEventListener("click", search);
+function route() {
+  const q = new URLSearchParams(location.search).get("q");
+  if (q) { $("#q").value = q; search(false); }          // 有 ?q= → 还原搜索（含后退）
+  else { $("#q").value = ""; $("#results").innerHTML = ""; $("#discover").style.display = "";
+         loadStats(); discover(); }                     // 无 → 首页（封面墙）
+}
+$("#go").addEventListener("click", () => search());
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 $("#rand").addEventListener("click", randomBook);
-$("#reshuffle").addEventListener("click", e => { e.preventDefault(); discover(); });
-loadStats();
-discover();
+$("#reshuffle").addEventListener("click", e => { e.preventDefault(); discover(true); });
+window.addEventListener("popstate", route);            // 后退/前进
+route();
 </script>
 </body>
 </html>

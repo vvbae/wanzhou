@@ -10,17 +10,31 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from cnbib import store
 from cnbib.aggregator import aggregate
+from cnbib.cleaning import has_cjk
 from cnbib.isbn import normalize
 from cnbib.sources import GoogleBooksSource, OpenLibrarySource
 
-# 加书源预填用：实时查 OpenLibrary + Google Books（这里重新接回 Google）
+# 加书源预填 + 懒富化用：实时查 OpenLibrary + Google Books
 _LOOKUP_SOURCES = [OpenLibrarySource(), GoogleBooksSource()]
+
+
+async def _lazy_enrich(isbn: str):
+    """懒富化(A)：被访问的拼音书，后台查 Google 补成中文，下次访问就好了。"""
+    try:
+        rec = (await aggregate(isbn, _LOOKUP_SOURCES)).record
+        conn = store.connect(DB_PATH)
+        try:
+            store.apply_enrichment(conn, isbn, rec)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — 后台尽力而为，失败不影响请求
+        pass
 
 DB_PATH = os.environ.get("CNBIB_DB", store.DEFAULT_DB)
 # admin 审核口令（环境变量；不设则审核接口一律拒绝——不是用户系统，就一个密钥）
@@ -67,10 +81,13 @@ def get_conn():
 
 # ── JSON 端点 ──────────────────────────────────────────────────────
 @app.get("/books/{isbn}")
-def get_edition(isbn: str, conn=Depends(get_conn)):
+def get_edition(isbn: str, background: BackgroundTasks, conn=Depends(get_conn)):
     e = store.get_edition(conn, isbn.strip())
     if not e:
         raise HTTPException(404, f"库里没有这本（版本）：{isbn}。可去【加书】添加。")
+    # 懒富化：标题还是拼音、且没富化过 → 后台查 Google 补中文（本次先返回现状）
+    if not e.get("enriched") and not has_cjk(e.get("title")):
+        background.add_task(_lazy_enrich, e["isbn_13"])
     return e
 
 

@@ -83,6 +83,39 @@ class TestSearch:
         assert store.search(conn, "  ") == (0, [])
 
 
+class TestEnrichment:
+    def test_pinyin_title_upgraded_to_chinese(self, tmp_path):
+        conn = _conn(tmp_path)
+        wid = store.upsert_work(conn, {"title": "Bai nian gu du"}, id="w1")
+        store.upsert_edition(conn, "9787544253994", {"work_id": wid, "title": "Bai nian gu du"})
+        changed = store.apply_enrichment(conn, "9787544253994", {
+            "title": "百年孤独", "cover_url": "https://x/c.jpg", "description": "马孔多的百年"})
+        assert "title" in changed
+        e = store.get_edition(conn, "9787544253994")
+        assert e["title"] == "百年孤独"
+        assert e["sources"]["title"] == "google_books"
+        assert e["cover_url"] == "https://x/c.jpg"
+        assert e["enriched"]                                   # 标记已富化
+        assert e["work"]["description"] == "马孔多的百年"
+        assert store.search(conn, "百年孤独")[0] == 1           # 富化后中文可搜
+
+    def test_does_not_overwrite_existing_chinese(self, tmp_path):
+        conn = _conn(tmp_path)
+        wid = store.upsert_work(conn, {"title": "三体"}, id="w2")
+        store.upsert_edition(conn, "9787536692930", {"work_id": wid, "title": "三体"})
+        changed = store.apply_enrichment(conn, "9787536692930", {"title": "Santi"})
+        assert "title" not in changed                          # 已是中文，不覆盖
+        assert store.get_edition(conn, "9787536692930")["title"] == "三体"
+
+    def test_needs_enrichment_picks_pinyin(self, tmp_path):
+        conn = _conn(tmp_path)
+        w = store.upsert_work(conn, {"title": "x"}, id="w3")
+        store.upsert_edition(conn, "9787544253994", {"work_id": w, "title": "Bai nian gu du"})
+        store.upsert_edition(conn, "9787536692930", {"work_id": w, "title": "三体"})
+        picks = store.needs_enrichment(conn)
+        assert "9787544253994" in picks and "9787536692930" not in picks
+
+
 class TestStats:
     def test_counts(self, tmp_path):
         conn = _conn(tmp_path); _seed(conn)

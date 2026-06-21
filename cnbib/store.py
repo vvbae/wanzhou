@@ -82,7 +82,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             isbn_13 TEXT PRIMARY KEY, work_id TEXT, title TEXT, isbn_10 TEXT, subtitle TEXT,
             translators TEXT, publisher TEXT, publish_date TEXT, publish_year INTEGER,
             cover_url TEXT, page_count INTEGER, language TEXT, series TEXT, format TEXT,
-            clc TEXT, ol_key TEXT, created_at TEXT, updated_at TEXT
+            clc TEXT, ol_key TEXT, enriched TEXT, created_at TEXT, updated_at TEXT
         );
         CREATE TABLE IF NOT EXISTS field_sources (
             entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, field_name TEXT NOT NULL,
@@ -119,6 +119,9 @@ def _ensure_columns(conn) -> None:
             if col not in have:
                 typ = "INTEGER" if col in _INT_COLS else "TEXT"
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+    # 富化标记列（不在 _FIELDS 里）
+    if "enriched" not in {r["name"] for r in conn.execute("PRAGMA table_info(editions)")}:
+        conn.execute("ALTER TABLE editions ADD COLUMN enriched TEXT")
 
 
 # ── JSON 助手 ──────────────────────────────────────────────────────
@@ -360,6 +363,52 @@ def _work_hit(conn, row: sqlite3.Row) -> dict:
         "first_publish_year": row["first_publish_year"],
         "authors": _author_names(conn, row["id"]),
     }
+
+
+def apply_enrichment(conn, isbn: str, record: dict, *, source: str = "google_books",
+                     confidence: int = 10, commit: bool = True) -> list[str]:
+    """用外部源数据补一条版本：拼音标题→中文、补封面、补作品简介。
+
+    record 是聚合后的扁平 dict（含中文 title / description / cover_url）。
+    只补"缺或拼音"的字段，标来源（默认 google_books，可信，不走审核）。返回改了的字段。
+    """
+    e = conn.execute(
+        "SELECT title, cover_url, work_id FROM editions WHERE isbn_13=?", (isbn,)
+    ).fetchone()
+    if not e:
+        return []
+    changed, ef = [], {}
+    if record.get("title") and has_cjk(record["title"]) and not has_cjk(e["title"]):
+        ef["title"] = record["title"]; changed.append("title")
+    if record.get("cover_url") and not e["cover_url"]:
+        ef["cover_url"] = record["cover_url"]; changed.append("cover_url")
+    if ef:
+        _upsert_partial(conn, "edition", isbn, ef)
+        set_sources(conn, "edition", isbn, [_FS(k, source, confidence) for k in ef], commit=False)
+
+    wid = e["work_id"]
+    if wid and record.get("description"):
+        w = conn.execute("SELECT description FROM works WHERE id=?", (wid,)).fetchone()
+        if w and not w["description"]:
+            _upsert_partial(conn, "work", wid, {"description": record["description"]})
+            set_sources(conn, "work", wid, [_FS("description", source, confidence)], commit=False)
+            changed.append("description")
+
+    conn.execute("UPDATE editions SET enriched=? WHERE isbn_13=?", (_now(), isbn))
+    if "title" in ef and wid:
+        _reindex_work(conn, wid)
+    if commit:
+        conn.commit()
+    return changed
+
+
+def needs_enrichment(conn, limit: int = 500) -> list[str]:
+    """挑还没富化、且标题是拼音/拉丁的版本 ISBN（给批量富化用）。"""
+    rows = conn.execute(
+        "SELECT isbn_13, title FROM editions WHERE enriched IS NULL AND title IS NOT NULL "
+        "LIMIT ?", (limit * 4,)
+    ).fetchall()
+    return [r["isbn_13"] for r in rows if not has_cjk(r["title"])][:limit]
 
 
 def search_authors(conn, q: str, limit: int = 6) -> list[dict]:

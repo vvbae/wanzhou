@@ -16,6 +16,15 @@
   button { margin-top:16px; width:100%; padding:11px; border:0; border-radius:9px; background:var(--ink); color:#fff; font-weight:600; }
   .msg{padding:10px 12px;border-radius:9px;margin:12px 0;display:none}
   .msg.ok{background:#eaf4ea;color:var(--ok);display:block} .msg.err{background:#fbeceb;color:var(--accent);display:block}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  .chip{background:#eef2f7;border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:14px}
+  .chip b{cursor:pointer;color:var(--accent);margin-left:6px}
+  .ac{position:relative}
+  .opts{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:9px;
+        margin-top:2px;max-height:240px;overflow:auto;z-index:5;display:none}
+  .opt{padding:8px 11px;cursor:pointer;border-top:1px solid var(--line);font-size:14px}
+  .opt:first-child{border-top:0} .opt:hover{background:#f3f6fa} .opt .m{color:var(--sub);font-size:12px}
+  .opt.new{color:var(--ok)}
 </style>
 </head>
 <body>
@@ -25,7 +34,7 @@
   <form id="f"></form>
 <script>
 const $=s=>document.querySelector(s);
-const esc=s=>(s==null?"":String(s)).replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const esc=s=>(s==null?"":String(s)).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
 const FIELDS={
   work:[["title","书名"],["title_original","原作名"],["description","简介","area"],["subjects","主题/标签","list"]],
   edition:[["title","书名"],["subtitle","副书名"],["translators","译者","list"],["publisher","出版社"],
@@ -37,27 +46,62 @@ const FIELDS={
 const LIST=new Set(["subjects","translators","aliases"]);
 const P=new URLSearchParams(location.search);
 const type=P.get("type"); const id=P.get("id"); const isbn=P.get("isbn");
-let orig={};
+let orig={}, authors=[], origAuthorsKey="";
 
 function msg(t,ok){const m=$("#msg");m.textContent=t;m.className="msg "+(ok?"ok":"err");}
 function disp(k,v){ if(Array.isArray(v))return v.join("、"); return v==null?"":String(v); }
+const authorsKey=arr=>JSON.stringify(arr.map(a=>a.id||("new:"+a.name)));
+
+function renderChips(){
+  $("#chips").innerHTML = authors.map((a,i)=>
+    `<span class="chip">${esc(a.name)}${a.id?"":'<span style="color:var(--ok)">·新</span>'}<b data-i="${i}">×</b></span>`).join("");
+  document.querySelectorAll("#chips b").forEach(b=>b.onclick=()=>{ authors.splice(+b.dataset.i,1); renderChips(); });
+}
+
+let acTimer;
+function bindAuthorAC(){
+  const inp=$("#authoradd"), box=$("#authoropts");
+  inp.addEventListener("input",()=>{
+    clearTimeout(acTimer); const q=inp.value.trim();
+    if(!q){ box.style.display="none"; return; }
+    acTimer=setTimeout(async()=>{
+      let opts=[];
+      try{ opts=(await (await fetch("/authors_search?q="+encodeURIComponent(q))).json()).results; }catch(_){}
+      let html=opts.map(o=>`<div class="opt" data-id="${esc(o.id)}" data-name="${esc(o.name)}">
+        ${esc(o.name)} <span class="m">${o.work_count} 部${o.birth_date?(" · "+esc(o.birth_date)):""}</span></div>`).join("");
+      html+=`<div class="opt new" data-name="${esc(q)}">＋ 新建作者：${esc(q)}</div>`;
+      box.innerHTML=html; box.style.display="block";
+      box.querySelectorAll(".opt").forEach(el=>el.onclick=()=>{
+        authors.push(el.dataset.id?{id:el.dataset.id,name:el.dataset.name}:{name:el.dataset.name});
+        renderChips(); inp.value=""; box.style.display="none";
+      });
+    },200);
+  });
+  inp.addEventListener("blur",()=>setTimeout(()=>box.style.display="none",200));
+}
 
 async function load(){
   let url, tid;
-  if(type==="edition"||isbn){ url="/books/"+encodeURIComponent(isbn); tid=isbn; }
-  else if(type==="author"){ url="/authors?id="+encodeURIComponent(id); tid=id; }
-  else { url="/works?id="+encodeURIComponent(id); tid=id; }
   const t = (isbn?"edition":type)||"work";
+  if(t==="edition"){ url="/books/"+encodeURIComponent(isbn); tid=isbn; }
+  else if(t==="author"){ url="/authors?id="+encodeURIComponent(id); tid=id; }
+  else { url="/works?id="+encodeURIComponent(id); tid=id; }
   $("#h").textContent="补全 / 纠错 · "+({work:"作品",edition:"版本",author:"作者"}[t]);
   try{
-    orig = await (await fetch(url)).json();
+    orig=await (await fetch(url)).json();
     const box=$("#f"); box.innerHTML="";
     for(const [k,label,kind] of FIELDS[t]){
       const v=disp(k,orig[k]);
+      box.insertAdjacentHTML("beforeend",`<label>${label}</label>`+(kind==="area"
+        ?`<textarea data-k="${k}">${esc(v)}</textarea>`:`<input data-k="${k}" value="${esc(v)}">`));
+    }
+    if(t==="work"){   // OL 式作者编辑：搜已有作者复用，没有才新建
+      authors=(orig.authors||[]).map(a=>({id:a.id,name:a.name})); origAuthorsKey=authorsKey(authors);
       box.insertAdjacentHTML("beforeend",
-        `<label>${label}</label>`+(kind==="area"
-          ?`<textarea data-k="${k}">${esc(v)}</textarea>`
-          :`<input data-k="${k}" value="${esc(v)}">`));
+        `<label>作者（输名字→选已有，没有才新建；改作者名字请去作者页）</label>
+         <div id="chips" class="chips"></div>
+         <div class="ac"><input id="authoradd" placeholder="加作者…" autocomplete="off"><div id="authoropts" class="opts"></div></div>`);
+      renderChips(); bindAuthorAC();
     }
     box.insertAdjacentHTML("beforeend",`<button type="submit">提交（待审核）</button>`);
     box.dataset.t=t; box.dataset.id=tid;
@@ -71,14 +115,15 @@ $("#f").addEventListener("submit",async ev=>{
     const k=el.dataset.k; let v=el.value.trim();
     let nv = LIST.has(k) ? v.split(/[，,、;]+/).map(x=>x.trim()).filter(Boolean) : (v===""?null:v);
     if(k==="publish_year"||k==="page_count") nv = v?parseInt(v):null;
-    if(disp(k,nv)!==disp(k,orig[k])) payload[k]=nv;   // 只发改了的
+    if(disp(k,nv)!==disp(k,orig[k])) payload[k]=nv;
   });
+  if(t==="work" && authorsKey(authors)!==origAuthorsKey) payload.authors=authors;
   if(!Object.keys(payload).length){msg("没有改动",false);return;}
   try{
     const r=await fetch("/contribute",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({target_type:t,kind:"edit",target_id:tid,payload})});
     const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
-    msg("已提交 "+Object.keys(payload).length+" 个字段，等管理员审核。谢谢！",true);
+    msg("已提交，等管理员审核。谢谢！",true);
   }catch(e){ msg("提交失败："+e.message,false); }
 });
 load();

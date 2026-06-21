@@ -138,6 +138,11 @@ def search(
             "results": results, "authors": authors}
 
 
+@app.get("/authors_search")
+def authors_search(q: str = Query(..., min_length=1), conn=Depends(get_conn)):
+    return {"results": store.search_authors(conn, q)}
+
+
 @app.get("/tags")
 def tags_autocomplete(q: str = Query(..., min_length=1), conn=Depends(get_conn)):
     return {"results": store.search_tags(conn, q)}

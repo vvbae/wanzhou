@@ -554,6 +554,35 @@ def works_by_tag(conn, slug: str, page: int = 1, page_size: int = 20) -> tuple[i
     return total, name_row["name"], [_work_hit(conn, r) for r in rows]
 
 
+def set_work_authors(conn, work_id: str, entries, *, source: str = "crowdsource",
+                     confidence: int = 100, commit: bool = True) -> None:
+    """重设作品的作者（OL 式）。entries 每项是 {"id": 已有作者} 或 {"name": 新名}：
+    有 id 且存在 → 复用；否则按名找现成的，再没有才新建。避免造重复。"""
+    conn.execute("DELETE FROM work_authors WHERE work_id=?", (work_id,))
+    for e in entries or []:
+        aid = None
+        if isinstance(e, dict) and e.get("id"):
+            if conn.execute("SELECT 1 FROM authors WHERE id=?", (e["id"],)).fetchone():
+                aid = e["id"]
+        if not aid:
+            nm = re.sub(r"\s+", " ",
+                        (e.get("name") if isinstance(e, dict) else str(e)).strip())
+            if not nm:
+                continue
+            row = conn.execute("SELECT id FROM authors WHERE name=? LIMIT 1", (nm,)).fetchone()
+            if row:
+                aid = row["id"]
+            else:
+                aid = new_id("a")
+                upsert_author(conn, {"name": nm}, id=aid, commit=False)
+                set_sources(conn, "author", aid, [_FS("name", source, confidence)], commit=False)
+        conn.execute("INSERT OR IGNORE INTO work_authors (work_id, author_id) VALUES (?,?)",
+                     (work_id, aid))
+    _reindex_work(conn, work_id)
+    if commit:
+        conn.commit()
+
+
 def build_tags_from_subjects(conn, *, batch: int = 5000) -> int:
     """迁移：把所有 works.subjects 拆成 tags + work_tags。返回处理的作品数。"""
     conn.execute("PRAGMA synchronous=OFF")
@@ -740,6 +769,8 @@ def approve_contribution(conn, contrib_id: int, *, reviewer: str = "admin", note
         if etype == "work" and "subjects" in payload:   # 同步标签
             conn.execute("DELETE FROM work_tags WHERE work_id=?", (tid,))
             add_tags_to_work(conn, tid, payload.get("subjects") or [], commit=False)
+        if etype == "work" and "authors" in payload:     # 重设作者（OL 式复用）
+            set_work_authors(conn, tid, payload.get("authors") or [], commit=False)
     conn.execute(
         "UPDATE contributions SET status='approved', reviewed_by=?, review_note=?, reviewed_at=?, target_id=? WHERE id=?",
         (reviewer, note, _now(), tid, contrib_id),

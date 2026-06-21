@@ -66,6 +66,36 @@ class TestChineseTitle:
         assert total == 1 and hits[0]["title"] == "追风筝的人"
 
 
+class TestWorkAuthors:
+    def test_reuse_existing_and_create_new(self, tmp_path):
+        conn = _conn(tmp_path)
+        a1 = store.upsert_author(conn, {"name": "钱钟书"}, id="OL_QZS")
+        wid = store.upsert_work(conn, {"title": "围城"}, id="w1", author_ids=[])
+        # 复用已有作者(id) + 新建一个(name)
+        store.set_work_authors(conn, wid, [{"id": a1, "name": "钱钟书"}, {"name": "杨绛"}])
+        names = {a["name"] for a in store.get_work(conn, wid)["authors"]}
+        assert names == {"钱钟书", "杨绛"}
+        # 复用没新建：钱钟书 还是同一个 id（没造重复）
+        ids = [a["id"] for a in store.get_work(conn, wid)["authors"] if a["name"] == "钱钟书"]
+        assert ids == ["OL_QZS"]
+
+    def test_existing_name_reused_not_duplicated(self, tmp_path):
+        conn = _conn(tmp_path)
+        store.upsert_author(conn, {"name": "鲁迅"}, id="OL_LX")
+        wid = store.upsert_work(conn, {"title": "呐喊"}, id="w1", author_ids=[])
+        store.set_work_authors(conn, wid, [{"name": "鲁迅"}])   # 只给名字，应复用已有
+        assert conn.execute("SELECT count(*) FROM authors WHERE name='鲁迅'").fetchone()[0] == 1
+
+    def test_via_approve(self, tmp_path):
+        conn = _conn(tmp_path)
+        a1 = store.upsert_author(conn, {"name": "A"}, id="a1")
+        wid = store.upsert_work(conn, {"title": "x"}, id="w1", author_ids=[a1])
+        cid = store.add_contribution(conn, target_type="work", target_id=wid, kind="edit",
+                                     payload={"authors": [{"name": "B"}]})
+        store.approve_contribution(conn, cid)
+        assert [a["name"] for a in store.get_work(conn, wid)["authors"]] == ["B"]
+
+
 class TestSearch:
     def test_search_by_title(self, tmp_path):
         conn = _conn(tmp_path); _seed(conn)

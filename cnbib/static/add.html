@@ -23,6 +23,7 @@
   <h1>加一本书</h1>
   <p class="sub">我们没有的书，填好提交，管理员审核后入库。带 * 必填。</p>
   <div id="msg" class="msg"></div>
+  <div id="prefill" class="msg" style="background:#eef4fb;color:#2c5b8f;display:none"></div>
   <form id="f">
     <label>ISBN *</label><input id="isbn_13" inputmode="numeric" placeholder="13 或 10 位">
     <label>书名（中文）*</label><input id="title">
@@ -35,6 +36,12 @@
     <label>主题/标签（逗号分隔）</label><input id="subjects">
     <button type="submit">提交（待审核）</button>
   </form>
+
+  <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--line);color:var(--sub);font-size:13px">
+    <b>批量提交</b>：整理成 CSV（列：<code>isbn,title,authors,translators,publisher,publish_year,title_original,description,subjects</code>，
+    多值用 <code>;</code> 分隔），发邮件到 <a href="mailto:contribute@wanzhou-placeholder.org">contribute@wanzhou-placeholder.org</a>，
+    管理员审核后入库。（不做自助上传）
+  </div>
 <script>
 const $=s=>document.querySelector(s);
 const LIST=['authors','translators','subjects'];
@@ -57,6 +64,27 @@ $("#f").addEventListener("submit",async ev=>{
     msg("已提交，等管理员审核。谢谢你！",true); $("#f").reset();
   }catch(e){msg("提交失败："+e.message,false);}
 });
+
+// 从搜索/详情带 ?isbn= 进来：先查库（有就跳过去），没有再查外部源预填
+async function prefill(){
+  const isbn=new URLSearchParams(location.search).get("isbn");
+  if(!isbn) return;
+  $("#isbn_13").value=isbn;
+  const ex=await fetch("/books/"+encodeURIComponent(isbn));
+  if(ex.ok){ location.href="/book?isbn="+encodeURIComponent(isbn); return; }  // 已收录→去看，不重复加
+  const p=$("#prefill"); p.style.display="block"; p.textContent="正在从 Google / OpenLibrary 查这个 ISBN…";
+  try{
+    const d=await (await fetch("/lookup/"+encodeURIComponent(isbn))).json();
+    if(!d.found){ p.textContent="外部源也没有这本，请手动填写。"; return; }
+    for(const k of ['title','title_original','publisher','description']) if(d[k]) $("#"+k).value=d[k];
+    if(d.authors&&d.authors.length) $("#authors").value=d.authors.join("、");
+    if(d.translators&&d.translators.length) $("#translators").value=d.translators.join("、");
+    if(d.subjects&&d.subjects.length) $("#subjects").value=d.subjects.join("、");
+    if(d.publish_year) $("#publish_year").value=d.publish_year;
+    p.textContent="已自动带出外部源数据，请核对/补全后提交。";
+  }catch(e){ p.textContent="查询外部源失败，请手动填写。"; }
+}
+prefill();
 </script>
 </body>
 </html>

@@ -66,7 +66,8 @@ async function load(){
   if(!isbn){ document.getElementById("app").innerHTML='<div class="err">缺少 ISBN</div>'; return; }
   try{
     const r = await fetch("/books/"+encodeURIComponent(isbn));
-    if(r.status===404){ document.getElementById("app").innerHTML=`<div class="err">库里没有这本。<br>（加书功能即将上线）</div>`; return; }
+    if(r.status===404){ document.getElementById("app").innerHTML=`<div class="err">库里没有这本。<br>
+      <a href="/add?isbn=${encodeURIComponent(isbn)}" style="color:var(--accent)">➕ 加这本书 →</a></div>`; return; }
     if(!r.ok) throw new Error((await r.json()).detail||r.statusText);
     render(await r.json());
   }catch(e){ document.getElementById("app").innerHTML=`<div class="err">加载失败：${e.message}</div>`; }

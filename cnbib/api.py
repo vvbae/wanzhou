@@ -15,7 +15,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from cnbib import store
+from cnbib.aggregator import aggregate
 from cnbib.isbn import normalize
+from cnbib.sources import GoogleBooksSource, OpenLibrarySource
+
+# 加书源预填用：实时查 OpenLibrary + Google Books（这里重新接回 Google）
+_LOOKUP_SOURCES = [OpenLibrarySource(), GoogleBooksSource()]
 
 DB_PATH = os.environ.get("CNBIB_DB", store.DEFAULT_DB)
 # admin 审核口令（环境变量；不设则审核接口一律拒绝——不是用户系统，就一个密钥）
@@ -110,6 +115,25 @@ def get_stats(conn=Depends(get_conn)):
     return store.stats(conn)
 
 
+# ── 加书源预填：实时查外部源，不写库（搜不到才让用户手填）──────────
+@app.get("/lookup/{isbn}")
+async def lookup(isbn: str):
+    isbn13 = normalize(isbn)
+    if not isbn13:
+        raise HTTPException(400, f"不是合法 ISBN：{isbn}")
+    r = (await aggregate(isbn13, _LOOKUP_SOURCES)).record
+    if not r.get("title"):
+        return {"found": False, "isbn_13": isbn13}
+    return {
+        "found": True, "isbn_13": isbn13, "title": r.get("title"),
+        "authors": r.get("authors") or [], "translators": r.get("translators") or [],
+        "title_original": r.get("original_title"), "publisher": r.get("publisher"),
+        "publish_year": r.get("publish_year"), "description": r.get("description"),
+        "subjects": r.get("subjects") or [], "cover_url": r.get("cover_url"),
+        "language": r.get("language"),
+    }
+
+
 # ── 写侧：贡献（进待审）+ admin 审核 ───────────────────────────────
 @app.post("/contribute")
 def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
@@ -123,6 +147,8 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
         isbn = normalize(str(c.payload.get("isbn_13", "")))
         if not isbn:
             raise HTTPException(400, "加书需要合法 ISBN")
+        if store.get_edition(conn, isbn):       # 查重：已收录 → 走纠错，别重复加
+            raise HTTPException(409, "这本书已收录，请在它的页面用『补全·纠错』")
         c.payload["isbn_13"] = isbn
     if c.kind == "edit" and not c.target_id:
         raise HTTPException(400, "改字段需要 target_id")

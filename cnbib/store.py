@@ -21,12 +21,13 @@ from cnbib.cleaning import has_cjk
 DEFAULT_DB = "cnbib.db"
 
 # 各实体的可写列（不含主键/时间戳）
-AUTHOR_FIELDS = ("name", "name_original", "aliases", "bio", "ol_key")
+AUTHOR_FIELDS = ("name", "name_original", "aliases", "bio", "birth_date", "death_date", "ol_key")
 WORK_FIELDS = ("title", "title_original", "description", "subjects", "first_publish_year", "ol_key")
 EDITION_FIELDS = (
     "work_id", "title", "isbn_10", "subtitle", "translators", "publisher", "publish_date",
-    "publish_year", "cover_url", "page_count", "language", "series", "format", "ol_key",
+    "publish_year", "cover_url", "page_count", "language", "series", "format", "clc", "ol_key",
 )
+_INT_COLS = {"first_publish_year", "publish_year", "page_count"}
 # JSON list 列
 LIST_FIELDS = {"aliases", "subjects", "translators"}
 
@@ -65,7 +66,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS authors (
             id TEXT PRIMARY KEY, name TEXT, name_original TEXT, aliases TEXT,
-            bio TEXT, ol_key TEXT, created_at TEXT, updated_at TEXT
+            bio TEXT, birth_date TEXT, death_date TEXT, ol_key TEXT,
+            created_at TEXT, updated_at TEXT
         );
         CREATE TABLE IF NOT EXISTS works (
             id TEXT PRIMARY KEY, title TEXT, title_original TEXT, description TEXT,
@@ -80,7 +82,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             isbn_13 TEXT PRIMARY KEY, work_id TEXT, title TEXT, isbn_10 TEXT, subtitle TEXT,
             translators TEXT, publisher TEXT, publish_date TEXT, publish_year INTEGER,
             cover_url TEXT, page_count INTEGER, language TEXT, series TEXT, format TEXT,
-            ol_key TEXT, created_at TEXT, updated_at TEXT
+            clc TEXT, ol_key TEXT, created_at TEXT, updated_at TEXT
         );
         CREATE TABLE IF NOT EXISTS field_sources (
             entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, field_name TEXT NOT NULL,
@@ -99,12 +101,24 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_contrib_status ON contributions(status);
         """
     )
+    _ensure_columns(conn)
     tok = _fts_ok(conn)
     conn.execute(
         f"CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5("
         f"work_id UNINDEXED, title, authors, publisher, tokenize='{tok}')"
     )
     conn.commit()
+
+
+def _ensure_columns(conn) -> None:
+    """给已存在的表补齐新增列（轻量迁移），不丢旧数据。"""
+    for entity in ("author", "work", "edition"):
+        table = _TABLE[entity]
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col in _FIELDS[entity]:
+            if col not in have:
+                typ = "INTEGER" if col in _INT_COLS else "TEXT"
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
 
 
 # ── JSON 助手 ──────────────────────────────────────────────────────
@@ -379,23 +393,27 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
     publisher, publish_date/year, title_original, description, subjects, work_id(可选关联)。
     供"加书"审核通过、以及将来从源站可信导入复用。
     """
-    author_ids = []
-    for name in payload.get("authors") or []:
-        nm = str(name).strip()
-        if not nm:
-            continue
-        aid = new_id("a")
-        upsert_author(conn, {"name": nm}, id=aid, commit=False)
-        set_sources(conn, "author", aid, [_FS("name", source, confidence)], commit=False)
-        author_ids.append(aid)
-
-    wid = payload.get("work_id") or new_id("w")
-    wf = {k: payload[k] for k in ("title", "title_original", "description", "subjects",
-                                  "first_publish_year") if payload.get(k) not in (None, "", [])}
-    upsert_work(conn, wf, id=wid, author_ids=author_ids or None, commit=False, reindex=False)
-    set_sources(conn, "work", wid, [_FS(k, source, confidence) for k in wf], commit=False)
-
     isbn = payload["isbn_13"]
+    # 查重：版本已存在 → 复用其作品，不重建作者/作品（避免重复 work / 覆盖原作者）
+    existing = conn.execute("SELECT work_id FROM editions WHERE isbn_13=?", (isbn,)).fetchone()
+    if existing and existing["work_id"]:
+        wid = existing["work_id"]
+    else:
+        author_ids = []
+        for name in payload.get("authors") or []:
+            nm = str(name).strip()
+            if not nm:
+                continue
+            aid = new_id("a")
+            upsert_author(conn, {"name": nm}, id=aid, commit=False)
+            set_sources(conn, "author", aid, [_FS("name", source, confidence)], commit=False)
+            author_ids.append(aid)
+        wid = payload.get("work_id") or new_id("w")
+        wf = {k: payload[k] for k in ("title", "title_original", "description", "subjects",
+                                      "first_publish_year") if payload.get(k) not in (None, "", [])}
+        upsert_work(conn, wf, id=wid, author_ids=author_ids or None, commit=False, reindex=False)
+        set_sources(conn, "work", wid, [_FS(k, source, confidence) for k in wf], commit=False)
+
     ef = {k: payload[k] for k in ("title", "subtitle", "translators", "publisher",
           "publish_date", "publish_year", "cover_url", "page_count", "language",
           "series", "format", "isbn_10") if payload.get(k) not in (None, "", [])}

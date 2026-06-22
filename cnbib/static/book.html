@@ -37,6 +37,7 @@
   <div id="app"></div>
 <script>
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const hasCJK = s => /[㐀-鿿豈-﫿]/.test(s||"");
 const EDFIELDS = [["isbn_10","ISBN-10"],["publisher","出版社"],["publish_date","出版日期"],
   ["publish_year","出版年"],["translators","译者"],["page_count","页数"],["language","语言"],
   ["series","丛书"],["format","装帧"],["subtitle","副书名"]];
@@ -46,7 +47,8 @@ function val(e,k){ let v=e[k]; if(Array.isArray(v)) return v.join("、"); return
 
 function render(e){
   const w = e.work || {};
-  const title = e.title || w.display_title || w.title || "(无标题)";
+  // 优先中文：这一版自己是中文就用它，否则用作品里(别的版本)的中文标题
+  const title = (hasCJK(e.title) ? e.title : (w.display_title || e.title || w.title)) || "(无标题)";
   const others = (w.editions||[]).filter(o => o.isbn_13 !== e.isbn_13);
   const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : `<div class="ph">暂无封面</div>`;
   const rows = EDFIELDS.map(([k,label])=>{

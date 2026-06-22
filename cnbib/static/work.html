@@ -3,23 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>作品</title>
+<title>书</title>
 <style>
-  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; }
   body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
          background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
   a { color:#2c5b8f; text-decoration:none; }
   .nav { font-size:14px; margin-bottom:12px; }
+  .top { display:flex; gap:16px; }
+  .top img { width:112px; height:160px; object-fit:cover; border-radius:8px; background:#e7e7e3; flex:none; }
   h1 { font-size:22px; margin:0 0 4px; }
-  .orig { color:var(--sub); margin:0 0 4px; }
-  .by { margin:2px 0 12px; }
-  .desc { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; }
-  .subjects span { display:inline-block; background:#eee; border-radius:6px; padding:1px 8px; margin:3px 4px 0 0; font-size:13px; color:var(--sub); }
-  h2 { font-size:15px; color:var(--sub); margin:20px 0 6px; }
-  .ed { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; color:var(--ink); }
-  .ed .t { font-weight:600; }
+  .orig { color:var(--sub); margin:0 0 4px; font-size:14px; }
+  .by { margin:4px 0; }
+  .desc { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; margin-top:14px; }
+  .subjects { margin-top:10px; }
+  .subjects a span { display:inline-block; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:3px 11px; margin:3px 5px 0 0; font-size:13px; color:var(--ink); }
+  h2 { font-size:15px; color:var(--sub); margin:22px 0 6px; }
+  .ed { display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px; margin-top:8px; color:var(--ink); align-items:center; }
+  .ed img { width:40px; height:56px; object-fit:cover; border-radius:4px; background:#e7e7e3; flex:none; }
+  .ed .t { font-weight:600; font-size:15px; }
   .ed .m { color:var(--sub); font-size:13px; }
-  .err { color:var(--accent); padding:24px 0; text-align:center; }
+  .err { color:#c0392b; padding:24px 0; text-align:center; }
 </style>
 </head>
 <body>
@@ -27,27 +31,33 @@
   <div id="app"></div>
 <script>
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function authorLinks(a){ return (a||[]).map(x=>`<a href="/author?id=${encodeURIComponent(x.id)}">${esc(x.name)}</a>`).join("、"); }
+const authorLinks = a => (a||[]).map(x=>`<a href="/author?id=${encodeURIComponent(x.id)}">${esc(x.name)}</a>`).join("、");
 
 function render(w){
   const title = w.display_title || w.title || "(无标题)";
   const showOrig = w.title_original && w.title_original !== title;
+  const cover = w.cover_url ? `<img src="${w.cover_url}" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
   const eds = (w.editions||[]).map(e=>{
     const m = [e.publisher, e.publish_year, e.format, (e.translators||[]).length?("译: "+e.translators.join("、")):null].filter(Boolean).join(" · ");
-    return `<a class="ed" href="/book?isbn=${encodeURIComponent(e.isbn_13)}">
-      <div class="t">${esc(e.title)||title} <span class="m">ISBN ${e.isbn_13}</span></div>
-      <div class="m">${esc(m)}</div></a>`;
+    const c = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
+    return `<a class="ed" href="/book?isbn=${encodeURIComponent(e.isbn_13)}">${c}
+      <div><div class="t">${esc(e.title)||title}</div>
+      <div class="m">${esc(m)}　ISBN ${e.isbn_13}</div></div></a>`;
   }).join("");
   document.getElementById("app").innerHTML = `
-    <h1>${esc(title)}</h1>
-    ${showOrig?`<p class="orig">原作名：${esc(w.title_original)}</p>`:""}
-    <p class="by">作者：${authorLinks(w.authors) || '<span style="color:var(--sub)">—</span>'}</p>
+    <div class="top">${cover}
+      <div><h1>${esc(title)}</h1>
+        ${showOrig?`<p class="orig">原作名：${esc(w.title_original)}</p>`:""}
+        <p class="by">作者：${authorLinks(w.authors) || '<span style="color:var(--sub)">—</span>'}</p>
+        ${w.first_publish_year?`<p class="orig">首次出版：${w.first_publish_year}</p>`:""}
+      </div>
+    </div>
     ${w.description?`<div class="desc">${esc(w.description)}</div>`:""}
     ${(w.tags||[]).length?`<div class="subjects">${w.tags.map(t=>`<a href="/tag?tag=${encodeURIComponent(t.slug)}"><span>${esc(t.name)}</span></a>`).join("")}</div>`:""}
-    <h2>版本（${(w.editions||[]).length}）</h2>
-    ${eds || '<div class="m">—</div>'}
-    <p style="margin-top:16px"><a href="/edit?type=work&id=${encodeURIComponent(w.id)}">✏️ 补全 / 纠错作品信息</a>
-      <span style="color:var(--sub);font-size:13px">（书名/作者/简介/标签，所有版本共享；某一版的出版社/译者请点进对应版本改）</span></p>`;
+    <h2>共 ${(w.editions||[]).length} 个版本</h2>
+    ${eds || '<div class="ed.m">—</div>'}
+    <p style="margin-top:16px"><a href="/edit?type=work&id=${encodeURIComponent(w.id)}">✏️ 补全 / 纠错</a>
+      <span style="color:var(--sub);font-size:13px">（书名/作者/简介/标签，所有版本共享）</span></p>`;
 }
 async function load(){
   const id = new URLSearchParams(location.search).get("id");

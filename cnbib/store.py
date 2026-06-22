@@ -296,7 +296,8 @@ def get_author(conn, author_id: str) -> dict | None:
         return None
     a = _load_row("author", row)
     a["works"] = [
-        {"id": r["id"], "title": r["title"], "first_publish_year": r["first_publish_year"]}
+        {"id": r["id"], "title": _display_title(conn, r["id"], r["title"]),
+         "first_publish_year": r["first_publish_year"], "cover_url": _work_cover(conn, r["id"])}
         for r in conn.execute(
             "SELECT w.id, w.title, w.first_publish_year FROM work_authors wa "
             "JOIN works w ON w.id=wa.work_id WHERE wa.author_id=? ORDER BY w.first_publish_year DESC",
@@ -326,6 +327,7 @@ def get_work(conn, work_id: str) -> dict | None:
         ).fetchall()
     ]
     w["display_title"] = _display_title(conn, work_id, w.get("title"))
+    w["cover_url"] = _work_cover(conn, work_id)
     w["tags"] = tags_for_work(conn, work_id)
     w["sources"] = get_sources(conn, "work", work_id)
     return w
@@ -377,12 +379,21 @@ def search(conn, q: str, page: int = 1, page_size: int = 20) -> tuple[int, list[
     return total, [_work_hit(conn, r) for r in rows]
 
 
+def _work_cover(conn, work_id: str) -> str | None:
+    r = conn.execute(
+        "SELECT cover_url FROM editions WHERE work_id=? AND cover_url IS NOT NULL LIMIT 1",
+        (work_id,)
+    ).fetchone()
+    return r["cover_url"] if r else None
+
+
 def _work_hit(conn, row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
         "title": _display_title(conn, row["id"], row["title"]),   # 优先中文
         "first_publish_year": row["first_publish_year"],
         "authors": _author_names(conn, row["id"]),
+        "cover_url": _work_cover(conn, row["id"]),
     }
 
 

@@ -52,7 +52,7 @@ class TestJSON:
         with TestClient(apimod.app) as c:
             d = c.get("/authors", params={"id": aid}).json()
             assert d["bio"] == "阿富汗裔美国作家"
-            assert d["works"][0]["title"] == "The Kite Runner"
+            assert d["works"][0]["title"] == "追风筝的人"   # 作品列表也优先中文(display_title)
 
     def test_search_finds_chinese_title(self, tmp_path, monkeypatch):
         _setup(tmp_path, monkeypatch)

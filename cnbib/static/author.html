@@ -14,7 +14,8 @@
   .orig { color:var(--sub); margin:0 0 10px; }
   .bio { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; }
   h2 { font-size:15px; color:var(--sub); margin:20px 0 6px; }
-  .w { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; color:var(--ink); }
+  .w { display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; color:var(--ink); }
+  .w img { width:40px; height:56px; object-fit:cover; border-radius:4px; background:#e7e7e3; flex:none; }
   .w .m { color:var(--sub); font-size:13px; }
   .err { color:var(--accent); padding:24px 0; text-align:center; }
 </style>
@@ -27,9 +28,12 @@ const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&g
 function render(a){
   const showOrig = a.name_original && a.name_original !== a.name;
   const life = (a.birth_date || a.death_date) ? `${a.birth_date||""} – ${a.death_date||""}` : "";
-  const works = (a.works||[]).map(w=>`<a class="w" href="/work?id=${encodeURIComponent(w.id)}">
-    <span style="font-weight:600">${esc(w.title)||"(无标题)"}</span>
-    ${w.first_publish_year?`<span class="m"> · ${w.first_publish_year}</span>`:""}</a>`).join("");
+  const works = (a.works||[]).map(w=>{
+    const c = w.cover_url?`<img src="${w.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">`:`<img alt="">`;
+    return `<a class="w" href="/work?id=${encodeURIComponent(w.id)}">${c}
+      <div><span style="font-weight:600">${esc(w.title)||"(无标题)"}</span>
+      ${w.first_publish_year?`<span class="m"> · ${w.first_publish_year}</span>`:""}</div></a>`;
+  }).join("");
   document.getElementById("app").innerHTML = `
     <h1>${esc(a.name)||"(无名)"}</h1>
     ${showOrig?`<p class="orig">${esc(a.name_original)}</p>`:""}

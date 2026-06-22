@@ -18,7 +18,8 @@
   button:active { opacity:.7; }
   .bar { display:flex; gap:8px; margin-top:8px; }
   a { color:inherit; text-decoration:none; }
-  .hit { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:11px 13px; margin-top:10px; }
+  .hit { display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 12px; margin-top:10px; }
+  .hit img { width:44px; height:62px; object-fit:cover; border-radius:5px; background:#e7e7e3; flex:none; }
   .hit .t { font-weight:600; }
   .hit .m { color:var(--sub); font-size:13px; }
   .meta { color:var(--sub); font-size:13px; margin:14px 2px 0; }
@@ -80,9 +81,10 @@ const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&g
 
 function workCard(w) {
   const meta = [ (w.authors||[]).join("、"), w.first_publish_year ].filter(Boolean).join(" · ");
-  return `<a href="/work?id=${encodeURIComponent(w.id)}"><div class="hit">
-    <div class="t">${esc(w.title) || "(无标题)"}</div>
-    <div class="m">${esc(meta)}</div></div></a>`;
+  const cover = w.cover_url ? `<img src="${w.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
+  return `<a href="/work?id=${encodeURIComponent(w.id)}"><div class="hit">${cover}
+    <div><div class="t">${esc(w.title) || "(无标题)"}</div>
+    <div class="m">${esc(meta)}</div></div></div></a>`;
 }
 
 async function search(push) {

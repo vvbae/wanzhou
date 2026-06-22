@@ -52,7 +52,7 @@ function card(c){
   const h = href(c);
   const inner = `<span class="st ${c.status}">${ST[c.status]||c.status}</span>
     <span class="k"> ${(c.created_at||"").slice(0,10)}</span>
-    <div class="v">${what}${h?' <span class="k">→ 查看</span>':''}</div>
+    <div class="v">${what}</div>
     <div class="k">${val}</div>${note}`;
   return h ? `<a class="c" style="display:block;color:inherit;text-decoration:none" href="${h}">${inner}</a>`
            : `<div class="c">${inner}</div>`;

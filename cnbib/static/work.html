@@ -55,7 +55,7 @@ function render(w){
         ${w.last_edit?`<p class="orig">最后由 ${esc(w.last_edit.by)} 编辑 · ${w.last_edit.at}</p>`:""}
       </div>
     </div>
-    ${w.description?`<div class="desc">${esc(w.description)}</div>`:""}
+    <div class="desc">${w.description?esc(w.description):'<span style="color:var(--sub)">暂无简介</span>'}</div>
     ${(w.tags||[]).length?`<div class="subjects">${w.tags.map(t=>`<a href="/tag?tag=${encodeURIComponent(t.slug)}"><span>${esc(t.name)}</span></a>`).join("")}</div>`:""}
     <h2>共 ${(w.editions||[]).length} 个版本</h2>
     ${eds || '<div class="ed.m">—</div>'}

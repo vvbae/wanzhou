@@ -26,7 +26,7 @@
   .work { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; margin-top:16px; }
   .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
   @media (max-width:520px){ .grid{ grid-template-columns:repeat(3,1fr); } }
-  .gc { color:var(--ink); } .gc img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:8px; background:#e7e7e3; display:block; }
+  .gc { color:var(--ink); min-width:0; } .gc img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:8px; background:#e7e7e3; display:block; }
   .gc .t { font-size:12px; margin-top:5px; line-height:1.3; max-height:2.6em; overflow:hidden; }
   .gc .cm { font-size:11px; color:var(--sub); }
   .err { color:var(--accent); padding:24px 0; text-align:center; }
@@ -50,9 +50,8 @@ function render(e){
   const others = (w.editions||[]).filter(o => o.isbn_13 !== e.isbn_13);
   const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : `<div class="ph">暂无封面</div>`;
   const rows = EDFIELDS.map(([k,label])=>{
-    const v = val(e,k); const src = e.sources && e.sources[k];
-    const badge = src?`<span class="src ${src}">${SRC[src]||src}</span>`:"";
-    return `<tr><td class="k">${label}</td><td class="v">${v==null?'<span class="miss">—</span>':esc(v)+badge}</td></tr>`;
+    const v = val(e,k);
+    return `<tr><td class="k">${label}</td><td class="v">${v==null?'<span class="miss">—</span>':esc(v)}</td></tr>`;
   }).join("");
   const authors = (w.authors||[]).map(a=>`<a href="/author?id=${encodeURIComponent(a.id)}">${esc(a.name)}</a>`).join("、");
   document.getElementById("app").innerHTML = `
@@ -63,7 +62,7 @@ function render(e){
       </div>
     </div>
     <table>${rows}</table>
-    ${w.description?`<div class="work">${esc(w.description)}</div>`:""}
+    <div class="work">${w.description?esc(w.description):'<span style="color:var(--sub)">暂无简介</span>'}</div>
     ${e.last_edit?`<p style="color:var(--sub);font-size:13px;margin-top:12px">最后由 ${esc(e.last_edit.by)} 编辑 · ${e.last_edit.at}</p>`:""}
     <p style="margin-top:14px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a>
       ${w.id?` · <a href="/work?id=${encodeURIComponent(w.id)}">作品页</a>`:""}</p>

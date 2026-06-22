@@ -251,11 +251,18 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
     if c.kind == "edit" and not c.target_id:
         raise HTTPException(400, "改字段需要 target_id")
     user = store.get_session_user(conn, request.cookies.get("sid"))
+    uid = user["username"] if user else None
     hint = (c.contributor_hint or "").strip() or (request.client.host if request.client else None)
-    cid = store.add_contribution(conn, target_type=c.target_type, kind=c.kind,
-                                 payload=c.payload, target_id=c.target_id, contributor_hint=hint,
-                                 user_id=user["username"] if user else None)
-    return {"id": cid, "status": "pending", "message": "已提交，等审核"}
+    if c.kind == "edit":
+        # 按字段拆条：同一字段的多个提议天然成组，便于冲突解决
+        ids = [store.add_contribution(conn, target_type=c.target_type, kind="edit",
+               payload={f: v}, target_id=c.target_id, field_name=f,
+               contributor_hint=hint, user_id=uid) for f, v in c.payload.items()]
+    else:
+        ids = [store.add_contribution(conn, target_type=c.target_type, kind="add",
+               payload=c.payload, target_id=c.target_id, contributor_hint=hint, user_id=uid)]
+    return {"id": ids[0] if ids else None, "ids": ids, "status": "pending",
+            "message": "已提交，等审核"}
 
 
 @app.get("/admin/contributions")

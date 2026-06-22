@@ -29,8 +29,16 @@
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>(s==null?"":String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const disp=v=>Array.isArray(v)?v.join("、"):(v==null?"":String(v));
+const disp=v=>Array.isArray(v)?v.map(x=>(x&&x.name)||x).join("、"):(v==null?"":String(v));
 const TYPE={book:"新书",work:"作品",edition:"版本",author:"作者"};
+const FL={title:"书名",subtitle:"副书名",description:"简介",subjects:"主题",translators:"译者",
+  publisher:"出版社",publish_date:"出版日期",publish_year:"出版年",language:"语言",series:"丛书",
+  page_count:"页数",format:"装帧",title_original:"原作名",authors:"作者",name:"姓名",
+  name_original:"原文名",bio:"简介",aliases:"别名",birth_date:"生年",death_date:"卒年"};
+const fl=k=>FL[k]||k;
+function verifyLine(isbn,q){ const t=encodeURIComponent(isbn||q||""); return t?`<div class="h">核对：
+  <a href="https://www.google.com/search?tbm=bks&q=${t}" target="_blank">Google 图书</a> ·
+  <a href="https://search.douban.com/book/subject_search?search_text=${t}" target="_blank">豆瓣</a></div>`:""; }
 
 async function entityOf(t,id){           // 取目标当前数据，用于显示旧值 + 名称
   try{
@@ -69,6 +77,22 @@ async function card(c){
     <div class="acts"><button class="ok" onclick="act(${c.id},'approve')">通过</button>
       <button class="no" onclick="act(${c.id},'reject')">驳回</button></div></div>`;
 }
+async function conflictCard(items){   // 同一字段的多个提议
+  const c0=items[0], field=c0.field_name;
+  const e=await entityOf(c0.target_type,c0.target_id);
+  const cur=e?disp(e[field]):"";
+  const isbn=c0.target_type==="edition"?c0.target_id:"";
+  const opts=items.map(it=>`<tr>
+    <td class="new">${esc(disp(it.payload[field]))}</td>
+    <td class="k" style="white-space:nowrap">${esc(it.user_id||it.contributor_hint||"匿名")}</td>
+    <td style="white-space:nowrap"><button class="ok" onclick="act(${it.id},'approve')">采纳</button>
+      <button class="no" onclick="act(${it.id},'reject')">×</button></td></tr>`).join("");
+  return `<div class="c">
+    <div class="h">修改${TYPE[c0.target_type]||c0.target_type}《${esc(nameOf(c0.target_type,e))}》· 字段：${esc(fl(field))}</div>
+    <div class="ttl" style="font-weight:400">⚠ ${items.length} 个提议冲突，采纳一个（其余自动驳回）：</div>
+    <table><tr><td class="k">现值</td><td class="old">${esc(cur)||"（空）"}</td><td></td></tr>${opts}</table>
+    ${verifyLine(isbn,(e&&(e.title||e.name))||"")}</div>`;
+}
 async function act(id,what){
   try{
     const r=await fetch(`/admin/contributions/${id}/${what}`,{method:"POST"});
@@ -87,7 +111,18 @@ async function load(){
   if(r.status===403){ $("#meta").innerHTML=`<a href="/login?next=/admin">去登录 →</a>`; return; }
   const arr=await r.json();
   $("#meta").textContent=`待审 ${arr.length} 条`;
-  $("#list").innerHTML = (await Promise.all(arr.map(card))).join("") || '<div class="meta">没有待审的。</div>';
+  // 按 目标+字段 分组：同字段多提议 = 冲突组
+  const groups={};
+  for(const c of arr){
+    const key = c.kind==="add" ? ("a"+c.id) : `${c.target_type}|${c.target_id}|${c.field_name}`;
+    (groups[key] ||= []).push(c);
+  }
+  const blocks=[];
+  for(const k in groups){
+    const g=groups[k];
+    blocks.push(g.length>1 && g[0].kind==="edit" ? await conflictCard(g) : await card(g[0]));
+  }
+  $("#list").innerHTML = blocks.join("") || '<div class="meta">没有待审的。</div>';
 }
 load();
 </script>

@@ -140,8 +140,11 @@ def _ensure_columns(conn) -> None:
     # 不在 _FIELDS 里的附加列
     if "enriched" not in {r["name"] for r in conn.execute("PRAGMA table_info(editions)")}:
         conn.execute("ALTER TABLE editions ADD COLUMN enriched TEXT")
-    if "user_id" not in {r["name"] for r in conn.execute("PRAGMA table_info(contributions)")}:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(contributions)")}
+    if "user_id" not in cols:
         conn.execute("ALTER TABLE contributions ADD COLUMN user_id TEXT")
+    if "field_name" not in cols:
+        conn.execute("ALTER TABLE contributions ADD COLUMN field_name TEXT")
 
 
 # ── JSON 助手 ──────────────────────────────────────────────────────
@@ -749,8 +752,8 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
 
 
 def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
-                     target_id: str | None = None, contributor_hint: str | None = None,
-                     user_id: str | None = None) -> int:
+                     target_id: str | None = None, field_name: str | None = None,
+                     contributor_hint: str | None = None, user_id: str | None = None) -> int:
     # 规范化 payload（键排序）以便去重
     payload_str = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     dup = conn.execute(
@@ -762,8 +765,8 @@ def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
         return dup["id"]
     cur = conn.execute(
         "INSERT INTO contributions (status, target_type, target_id, kind, payload, "
-        "contributor_hint, user_id, created_at) VALUES ('pending', ?, ?, ?, ?, ?, ?, ?)",
-        (target_type, target_id, kind, payload_str, contributor_hint, user_id, _now()),
+        "field_name, contributor_hint, user_id, created_at) VALUES ('pending', ?,?,?,?,?,?,?,?)",
+        (target_type, target_id, kind, payload_str, field_name, contributor_hint, user_id, _now()),
     )
     conn.commit()
     return cur.lastrowid
@@ -824,6 +827,15 @@ def approve_contribution(conn, contrib_id: int, *, reviewer: str = "admin", note
         "UPDATE contributions SET status='approved', reviewed_by=?, review_note=?, reviewed_at=?, target_id=? WHERE id=?",
         (reviewer, note, _now(), tid, contrib_id),
     )
+    # 众包冲突解决：采纳了某字段的一个提议 → 同目标同字段的其它待审自动驳回
+    if c.get("field_name"):
+        conn.execute(
+            "UPDATE contributions SET status='rejected', reviewed_by=?, "
+            "review_note='已采纳其它提议', reviewed_at=? "
+            "WHERE status='pending' AND target_type=? AND IFNULL(target_id,'')=IFNULL(?,'') "
+            "AND field_name=? AND id<>?",
+            (reviewer, _now(), c["target_type"], c["target_id"], c["field_name"], contrib_id),
+        )
     conn.commit()
     return True
 

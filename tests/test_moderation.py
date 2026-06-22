@@ -90,6 +90,31 @@ class TestContributeFlow:
                        "payload": {"isbn_13": "not-isbn", "title": "x"}})
             assert r.status_code == 400
 
+    def test_edit_split_per_field(self, tmp_path, monkeypatch):
+        wid = _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            r = c.post("/contribute", json={"target_type": "work", "kind": "edit",
+                       "target_id": wid, "payload": {"title": "围城", "description": "钱钟书"}})
+            assert len(r.json()["ids"]) == 2          # 两个字段 → 两条
+            fields = {x["field_name"] for x in c.get("/admin/contributions",
+                      headers={"X-Admin-Token": TOKEN}).json()}
+            assert fields == {"title", "description"}
+
+    def test_conflict_approve_one_rejects_others(self, tmp_path, monkeypatch):
+        wid = _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            c.post("/contribute", json={"target_type": "work", "kind": "edit",
+                   "target_id": wid, "payload": {"description": "甲的说法"}})
+            c.post("/contribute", json={"target_type": "work", "kind": "edit",
+                   "target_id": wid, "payload": {"description": "乙的说法"}})
+            pend = c.get("/admin/contributions", headers={"X-Admin-Token": TOKEN}).json()
+            assert len(pend) == 2                     # 同字段两个竞争提议
+            # 采纳"甲" → "乙"自动驳回
+            chosen = next(x for x in pend if x["payload"]["description"] == "甲的说法")
+            c.post(f"/admin/contributions/{chosen['id']}/approve", headers={"X-Admin-Token": TOKEN})
+            assert c.get("/admin/contributions", headers={"X-Admin-Token": TOKEN}).json() == []
+            assert c.get("/works", params={"id": wid}).json()["description"] == "甲的说法"
+
     def test_add_existing_isbn_rejected_409(self, tmp_path, monkeypatch):
         _setup(tmp_path, monkeypatch)   # 已 seed 围城 9787020024759
         with TestClient(apimod.app) as c:

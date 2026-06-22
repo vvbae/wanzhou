@@ -79,7 +79,11 @@ const $ = s => document.querySelector(s);
 const ISBN_RE = /^[0-9Xx-]{10,17}$/;
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-function bookHref(b) { return b.isbn_13 ? "/book?isbn="+encodeURIComponent(b.isbn_13) : "/work?id="+encodeURIComponent(b.id); }
+function bookHref(b) {
+  if (b.isbn_13) return "/book?isbn="+encodeURIComponent(b.isbn_13);
+  const wid = b.id || b.work_id;                 // 搜索用 id，封面墙用 work_id
+  return wid ? "/work?id="+encodeURIComponent(wid) : "#";
+}
 function gcard(b) {   // 封面网格卡片（同首页）
   const cover = b.cover_url ? `<img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
   return `<a class="gc" href="${bookHref(b)}">${cover}<div class="t">${esc(b.title)||"(无标题)"}</div></a>`;
@@ -133,12 +137,12 @@ function renderGrid(items){ $("#grid").innerHTML = items.map(gcard).join(""); }
 async function discover(force) {
   // 缓存到 sessionStorage：从书页返回时不再刷新成别的
   if (!force) {
-    const cached = sessionStorage.getItem("cnbib_discover");
+    const cached = sessionStorage.getItem("cnbib_discover_v2");   // v2：旧缓存(无 isbn)自动失效
     if (cached) { renderGrid(JSON.parse(cached)); return; }
   }
   try {
     const d = await (await fetch("/random_books?n=8")).json();
-    sessionStorage.setItem("cnbib_discover", JSON.stringify(d.results));
+    sessionStorage.setItem("cnbib_discover_v2", JSON.stringify(d.results));
     renderGrid(d.results);
   } catch (_) { $("#discover").style.display = "none"; }
 }

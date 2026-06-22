@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="中文开放书目",
+    title="万轴 · 中文开放图书馆",
     version="0.2.0",
     description="社区共建的开放中文书目数据库。作者/作品/版本三层。数据 CC0。",
     lifespan=lifespan,

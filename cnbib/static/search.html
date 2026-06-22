@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>中文开放书目</title>
+<title>万轴 · 中文开放图书馆</title>
 <style>
   :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --accent:#c0392b; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -41,10 +41,10 @@
 </head>
 <body>
   <div style="display:flex;justify-content:space-between;align-items:baseline">
-    <h1>中文开放书目</h1>
+    <h1>万轴 <span style="font-size:14px;color:var(--sub);font-weight:400">中文开放图书馆</span></h1>
     <span id="acct" style="font-size:13px"></span>
   </div>
-  <p class="sub">免费、开放的中文书目库。查一本书的作者、译者、出版社、各种版本——我们没有的，你也能添加、纠错。</p>
+  <p class="sub">万轴是一个免费、开放的中文书目库，目前收录了从公开数据源整理的近四十万种中文图书。你可以在这里查一本书的作者、译者、出版社和各种版本。我们的愿景是为每一本中文书都建一个页面。</p>
 
   <div class="row">
     <input id="q" type="search" placeholder="书名 / 作者，或 ISBN" autocomplete="off">
@@ -62,7 +62,7 @@
     <div class="secttl">按主题浏览</div>
     <div id="topics" class="topics"></div>
     <div class="cards">
-      <a class="navcard" href="/add"><b>➕ 加一本书</b><span>我们没有的，添加进来</span></a>
+      <a class="navcard" href="#" id="addcard"><b>➕ 加一本书</b><span>先搜一下，没有再加</span></a>
       <a class="navcard" href="/guide"><b>🙋 如何参与</b><span>几分钟就能帮上忙</span></a>
       <a class="navcard" href="/about"><b>ℹ️ 关于项目</b><span>这是什么 · 数据 CC0</span></a>
     </div>
@@ -71,7 +71,7 @@
     <a href="/about" style="color:var(--sub)">关于</a> ·
     <a href="/contact" style="color:var(--sub)">联系</a> ·
     <a href="/privacy" style="color:var(--sub)">隐私</a><br>
-    开放中文书目 · 数据 CC0
+    万轴 · 中文开放图书馆 · 数据 CC0
   </footer>
 
 <script>
@@ -157,6 +157,7 @@ $("#go").addEventListener("click", () => search());
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 $("#rand").addEventListener("click", randomBook);
 $("#reshuffle").addEventListener("click", e => { e.preventDefault(); discover(true); });
+$("#addcard").addEventListener("click", e => { e.preventDefault(); window.scrollTo(0,0); $("#q").focus(); $("#q").placeholder="先搜书名/作者/ISBN，确认没有再加"; });
 async function topics() {
   try {
     const d = await (await fetch("/top_tags?n=12")).json();

@@ -2,7 +2,7 @@
 # 关键点：[mounts] 把持久卷挂到 /data，CNBIB_DB 指过去——数据库跨部署存活。
 
 app = "wanzhou"            # 改成你自己的 app 名（全局唯一）
-primary_region = "sjc"     # 美西圣何塞；美东用 "iad"
+primary_region = "hkg"     # 香港（降大陆延迟）
 
 [build]
 
@@ -23,4 +23,4 @@ primary_region = "sjc"     # 美西圣何塞；美东用 "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"

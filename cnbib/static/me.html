@@ -34,6 +34,14 @@ const FL={title:"书名",subtitle:"副书名",description:"简介",subjects:"主
   publish_date:"出版日期",publish_year:"出版年",language:"语言",series:"丛书",format:"装帧",title_original:"原作名",
   authors:"作者",name:"姓名",name_original:"原文名",bio:"简介",aliases:"别名",birth_date:"生年",death_date:"卒年"};
 
+function href(c){   // 点进去看我改的那本书/作者
+  const tid = c.target_id || (c.payload && c.payload.isbn_13);
+  if(!tid) return null;
+  if(c.target_type==="edition"||c.target_type==="book") return "/book?isbn="+encodeURIComponent(tid);
+  if(c.target_type==="author") return "/author?id="+encodeURIComponent(tid);
+  if(c.target_type==="work") return "/work?id="+encodeURIComponent(tid);
+  return null;
+}
 function card(c){
   const what = c.kind==="add" ? `新增${TYPE[c.target_type]||c.target_type}：${esc(c.payload.title||"")}`
     : `修改${TYPE[c.target_type]||c.target_type} · ${esc(FL[c.field_name]||c.field_name||"")}`;
@@ -41,11 +49,13 @@ function card(c){
     ? Object.entries(c.payload).map(([k,v])=>`${esc(FL[k]||k)}：${esc(disp(v))}`).join("；")
     : esc(disp(c.payload[c.field_name]));
   const note = (c.status==="rejected" && c.review_note) ? `<div class="note">驳回原因：${esc(c.review_note)}</div>` : "";
-  return `<div class="c">
-    <span class="st ${c.status}">${ST[c.status]||c.status}</span>
+  const h = href(c);
+  const inner = `<span class="st ${c.status}">${ST[c.status]||c.status}</span>
     <span class="k"> ${(c.created_at||"").slice(0,10)}</span>
-    <div class="v">${what}</div>
-    <div class="k">${val}</div>${note}</div>`;
+    <div class="v">${what}${h?' <span class="k">→ 查看</span>':''}</div>
+    <div class="k">${val}</div>${note}`;
+  return h ? `<a class="c" style="display:block;color:inherit;text-decoration:none" href="${h}">${inner}</a>`
+           : `<div class="c">${inner}</div>`;
 }
 async function load(){
   const me=await (await fetch("/auth/me")).json();

@@ -309,6 +309,7 @@ def get_author(conn, author_id: str) -> dict | None:
         ).fetchall()
     ]
     a["sources"] = get_sources(conn, "author", author_id)
+    a["last_edit"] = last_edit(conn, "author", author_id)
     return a
 
 
@@ -334,6 +335,7 @@ def get_work(conn, work_id: str) -> dict | None:
     w["cover_url"] = _work_cover(conn, work_id)
     w["tags"] = tags_for_work(conn, work_id)
     w["sources"] = get_sources(conn, "work", work_id)
+    w["last_edit"] = last_edit(conn, "work", work_id)
     return w
 
 
@@ -343,6 +345,7 @@ def get_edition(conn, isbn_13: str) -> dict | None:
         return None
     e = _load_row("edition", row)
     e["sources"] = get_sources(conn, "edition", isbn_13)
+    e["last_edit"] = last_edit(conn, "edition", isbn_13)
     e["work"] = get_work(conn, e["work_id"]) if e.get("work_id") else None
     return e
 
@@ -381,6 +384,18 @@ def search(conn, q: str, page: int = 1, page_size: int = 20) -> tuple[int, list[
         (like, like, like, page_size, offset),
     ).fetchall()
     return total, [_work_hit(conn, r) for r in rows]
+
+
+def last_edit(conn, entity_type: str, entity_id: str) -> dict | None:
+    """该实体最近一次通过审核的众包编辑：谁、何时。给详情页显示'最后编辑'。"""
+    r = conn.execute(
+        "SELECT user_id, reviewed_by, reviewed_at FROM contributions "
+        "WHERE status='approved' AND target_type=? AND IFNULL(target_id,'')=IFNULL(?,'') "
+        "ORDER BY reviewed_at DESC LIMIT 1", (entity_type, entity_id),
+    ).fetchone()
+    if not r:
+        return None
+    return {"by": r["user_id"] or "匿名", "at": (r["reviewed_at"] or "")[:10]}
 
 
 def _work_rep(conn, work_id: str) -> tuple[str | None, str | None]:

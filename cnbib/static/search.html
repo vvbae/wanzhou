@@ -29,6 +29,7 @@
   .gc { color:var(--ink); }
   .gc img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:8px; background:#eee; display:block; }
   .gc .t { font-size:12px; margin-top:5px; line-height:1.3; max-height:2.6em; overflow:hidden; }
+  .gc .ph { width:100%; aspect-ratio:2/3; display:flex; align-items:center; justify-content:center; background:#ececea; color:#9a9a93; font-size:12px; border-radius:8px; }
   .secttl { font-size:13px; color:var(--sub); margin:20px 2px 4px; }
   .topics { display:flex; flex-wrap:wrap; gap:8px; }
   .topics a { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:5px 13px; font-size:14px; color:var(--ink); }
@@ -85,7 +86,7 @@ function bookHref(b) {
   return wid ? "/work?id="+encodeURIComponent(wid) : "#";
 }
 function gcard(b) {   // 封面网格卡片（同首页）
-  const cover = b.cover_url ? `<img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
+  const cover = b.cover_url ? `<img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<div class="ph">暂无封面</div>`;
   return `<a class="gc" href="${bookHref(b)}">${cover}<div class="t">${esc(b.title)||"(无标题)"}</div></a>`;
 }
 

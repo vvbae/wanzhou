@@ -12,6 +12,8 @@
   .nav { font-size:14px; margin-bottom:12px; }
   .top { display:flex; gap:14px; }
   .top img { width:96px; height:136px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
+  .top .ph { width:96px; height:136px; flex:none; display:flex; align-items:center; justify-content:center; background:#ececea; color:#9a9a93; font-size:13px; border-radius:8px; }
+  .gc .ph { width:100%; aspect-ratio:2/3; display:flex; align-items:center; justify-content:center; background:#ececea; color:#9a9a93; font-size:12px; border-radius:8px; }
   h1 { font-size:20px; margin:0 0 4px; }
   table { width:100%; border-collapse:collapse; margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:11px; overflow:hidden; }
   td { padding:9px 11px; border-top:1px solid var(--line); vertical-align:top; }
@@ -46,7 +48,7 @@ function render(e){
   const w = e.work || {};
   const title = e.title || w.display_title || w.title || "(无标题)";
   const others = (w.editions||[]).filter(o => o.isbn_13 !== e.isbn_13);
-  const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : "";
+  const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : `<div class="ph">暂无封面</div>`;
   const rows = EDFIELDS.map(([k,label])=>{
     const v = val(e,k); const src = e.sources && e.sources[k];
     const badge = src?`<span class="src ${src}">${SRC[src]||src}</span>`:"";
@@ -62,11 +64,12 @@ function render(e){
     </div>
     <table>${rows}</table>
     ${w.description?`<div class="work">${esc(w.description)}</div>`:""}
+    ${e.last_edit?`<p style="color:var(--sub);font-size:13px;margin-top:12px">最后由 ${esc(e.last_edit.by)} 编辑 · ${e.last_edit.at}</p>`:""}
     <p style="margin-top:14px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a>
       ${w.id?` · <a href="/work?id=${encodeURIComponent(w.id)}">作品页</a>`:""}</p>
     ${others.length?`<h2 style="font-size:15px;color:var(--sub);margin:20px 0 6px">其他版本（${others.length}）</h2>
       <div class="grid">${others.map(o=>{
-        const oc=o.cover_url?`<img src="${o.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">`:`<img alt="">`;
+        const oc=o.cover_url?`<img src="${o.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">`:`<div class="ph">暂无封面</div>`;
         const m=[o.publisher,o.publish_year].filter(Boolean).join(" · ");
         return `<a class="gc" href="/book?isbn=${encodeURIComponent(o.isbn_13)}">${oc}<div class="t">${esc(o.title||title)}</div><div class="cm">${esc(m)}</div></a>`;
       }).join("")}</div>`:""}`;

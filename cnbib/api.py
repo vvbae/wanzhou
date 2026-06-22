@@ -14,6 +14,7 @@ from fastapi import (
     BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response,
 )
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cnbib import store
@@ -94,6 +95,7 @@ app = FastAPI(
     description="社区共建的开放中文书目数据库。作者/作品/版本三层。数据 CC0。",
     lifespan=lifespan,
 )
+app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
 
 # ── JSON 端点 ──────────────────────────────────────────────────────

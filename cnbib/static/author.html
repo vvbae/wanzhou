@@ -40,7 +40,7 @@ function render(a){
     ${showOrig?`<p class="orig">${esc(a.name_original)}</p>`:""}
     ${life?`<p class="orig">${esc(life)}</p>`:""}
     <div class="bio">${a.bio?esc(a.bio):'<span style="color:var(--sub)">暂无简介</span>'}</div>
-    ${a.last_edit?`<p class="orig" style="color:var(--sub);font-size:13px">最后由 ${esc(a.last_edit.by)} 编辑 · ${a.last_edit.at}</p>`:""}
+    <p class="orig" style="color:var(--sub);font-size:13px">${a.last_edit?`最后由 ${esc(a.last_edit.by)} 编辑 · ${a.last_edit.at}`:"数据来自 OpenLibrary / Google Books"}</p>
     <h2>作品（${(a.works||[]).length}）</h2>
     ${works ? `<div class="grid">${works}</div>` : '<div style="color:var(--sub)">—</div>'}
     <p style="margin-top:16px"><a href="/edit?type=author&id=${encodeURIComponent(a.id)}">✏️ 补全 / 纠错这个作者</a></p>`;

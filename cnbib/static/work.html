@@ -52,7 +52,7 @@ function render(w){
         ${showOrig?`<p class="orig">原作名：${esc(w.title_original)}</p>`:""}
         <p class="by">作者：${authorLinks(w.authors) || '<span style="color:var(--sub)">—</span>'}</p>
         ${w.first_publish_year?`<p class="orig">首次出版：${w.first_publish_year}</p>`:""}
-        ${w.last_edit?`<p class="orig">最后由 ${esc(w.last_edit.by)} 编辑 · ${w.last_edit.at}</p>`:""}
+        <p class="orig">${w.last_edit?`最后由 ${esc(w.last_edit.by)} 编辑 · ${w.last_edit.at}`:"数据来自 OpenLibrary / Google Books"}</p>
       </div>
     </div>
     <div class="desc">${w.description?esc(w.description):'<span style="color:var(--sub)">暂无简介</span>'}</div>

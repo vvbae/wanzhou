@@ -61,8 +61,8 @@ function render(e){
         <div style="font-size:14px;margin-top:6px">作者：${authors||"—"}</div>
       </div>
     </div>
-    <table>${rows}</table>
     <div class="work">${w.description?esc(w.description):'<span style="color:var(--sub)">暂无简介</span>'}</div>
+    <table>${rows}</table>
     ${e.last_edit?`<p style="color:var(--sub);font-size:13px;margin-top:12px">最后由 ${esc(e.last_edit.by)} 编辑 · ${e.last_edit.at}</p>`:""}
     <p style="margin-top:14px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a>
       ${w.id?` · <a href="/work?id=${encodeURIComponent(w.id)}">作品页</a>`:""}</p>

@@ -123,7 +123,10 @@ $("#f").addEventListener("submit",async ev=>{
     const r=await fetch("/contribute",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({target_type:t,kind:"edit",target_id:tid,payload})});
     const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
-    msg("已提交，等管理员审核。谢谢！",true);
+    // 推进基线：已提交的改动并入 orig，避免下次提交又把它带上（重复）
+    for(const k in payload){ if(k!=="authors") orig[k]=payload[k]; }
+    if(payload.authors) origAuthorsKey=authorsKey(authors);
+    msg("已提交，等审核。再改别的可继续提交。",true);
   }catch(e){ msg("提交失败："+e.message,false); }
 });
 load();

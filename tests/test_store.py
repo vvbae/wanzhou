@@ -223,3 +223,16 @@ class TestContributions:
     def test_approve_nonexistent(self, tmp_path):
         conn = _conn(tmp_path)
         assert store.approve_contribution(conn, 999) is False
+
+    def test_identical_pending_deduped(self, tmp_path):
+        conn = _conn(tmp_path); _, wid = _seed(conn)
+        a = store.add_contribution(conn, target_type="work", target_id=wid, kind="edit",
+                                   payload={"description": "同一个修改"})
+        b = store.add_contribution(conn, target_type="work", target_id=wid, kind="edit",
+                                   payload={"description": "同一个修改"})   # 完全相同
+        assert a == b                                   # 不重复建
+        assert len(store.list_contributions(conn)) == 1
+        # 不同内容 → 另起一条
+        c = store.add_contribution(conn, target_type="work", target_id=wid, kind="edit",
+                                   payload={"description": "另一个修改"})
+        assert c != a and len(store.list_contributions(conn)) == 2

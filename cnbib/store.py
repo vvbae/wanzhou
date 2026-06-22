@@ -751,11 +751,19 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
 def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
                      target_id: str | None = None, contributor_hint: str | None = None,
                      user_id: str | None = None) -> int:
+    # 规范化 payload（键排序）以便去重
+    payload_str = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    dup = conn.execute(
+        "SELECT id FROM contributions WHERE status='pending' AND target_type=? "
+        "AND IFNULL(target_id,'')=IFNULL(?,'') AND kind=? AND payload=?",
+        (target_type, target_id, kind, payload_str),
+    ).fetchone()
+    if dup:                       # 完全相同的待审贡献，不重复建
+        return dup["id"]
     cur = conn.execute(
         "INSERT INTO contributions (status, target_type, target_id, kind, payload, "
         "contributor_hint, user_id, created_at) VALUES ('pending', ?, ?, ?, ?, ?, ?, ?)",
-        (target_type, target_id, kind, json.dumps(payload, ensure_ascii=False),
-         contributor_hint, user_id, _now()),
+        (target_type, target_id, kind, payload_str, contributor_hint, user_id, _now()),
     )
     conn.commit()
     return cur.lastrowid

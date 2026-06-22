@@ -171,7 +171,7 @@ async function acct() {
     const a = $("#acct");
     if (me.username) {
       const review = (me.role==="reviewer"||me.role==="admin") ? ` · <a href="/admin" style="color:#2c5b8f">审核</a>` : "";
-      a.innerHTML = `${esc(me.username)}${review} · <a href="#" id="logout" style="color:var(--sub)">退出</a>`;
+      a.innerHTML = `<a href="/me">${esc(me.username)}</a>${review} · <a href="#" id="logout" style="color:var(--sub)">退出</a>`;
       $("#logout").onclick = async e => { e.preventDefault(); await fetch("/auth/logout",{method:"POST"}); location.reload(); };
     } else {
       a.innerHTML = `<a href="/login" style="color:#2c5b8f">登录 / 注册</a>`;

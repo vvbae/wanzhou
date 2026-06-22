@@ -47,6 +47,27 @@ class TestAuth:
         conn = store.connect(path)
         assert store.list_contributions(conn)[0]["user_id"] == "carol"
 
+    def test_my_contributions_tracks_status(self, tmp_path, monkeypatch):
+        path, wid = _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            # 未登录看自己的贡献 → 401
+            assert c.get("/my/contributions").status_code == 401
+            c.post("/auth/register", json={"username": "dave", "password": "secret1"})
+            c.post("/contribute", json={"target_type": "work", "kind": "edit",
+                   "target_id": wid, "payload": {"description": "x"}})
+            mine = c.get("/my/contributions").json()
+            assert len(mine) == 1 and mine[0]["status"] == "pending"
+            assert mine[0]["field_name"] == "description"
+        # 管理员通过后，用户能看到状态变 approved
+        conn = store.connect(path); store.create_user(conn, "boss", "secret1", role="admin")
+        cid = store.list_contributions(conn)[0]["id"]; conn.close()
+        with TestClient(apimod.app) as c:
+            c.post("/auth/login", json={"username": "boss", "password": "secret1"})
+            c.post(f"/admin/contributions/{cid}/approve")
+            c.post("/auth/logout")
+            c.post("/auth/login", json={"username": "dave", "password": "secret1"})
+            assert c.get("/my/contributions").json()[0]["status"] == "approved"
+
 
 class TestRoleGating:
     def test_normal_user_cannot_review_admin_can(self, tmp_path, monkeypatch):

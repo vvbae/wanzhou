@@ -27,7 +27,8 @@
     if (me.username) {
       const review = (me.role === "reviewer" || me.role === "admin")
         ? ' · <a href="/admin" style="color:#2c5b8f">审核</a>' : "";
-      a.innerHTML = me.username + review + ' · <a href="#" id="__logout" style="color:' + sub + '">退出</a>';
+      a.innerHTML = '<a href="/me" style="color:#2c5b8f">' + me.username + '</a>' + review +
+        ' · <a href="#" id="__logout" style="color:' + sub + '">退出</a>';
       document.getElementById("__logout").onclick = async e => {
         e.preventDefault(); await fetch("/auth/logout", { method: "POST" }); location.reload();
       };

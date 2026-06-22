@@ -267,6 +267,13 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
             "message": "已提交，等审核"}
 
 
+@app.get("/my/contributions")
+def my_contributions(user=Depends(current_user), conn=Depends(get_conn)):
+    if not user:
+        raise HTTPException(401, "请先登录")
+    return store.list_contributions_by_user(conn, user["username"])
+
+
 @app.get("/admin/contributions")
 def admin_list(status: str = "pending", reviewer=Depends(require_reviewer), conn=Depends(get_conn)):
     return store.list_contributions(conn, status)
@@ -329,6 +336,11 @@ def admin_page():
 @app.get("/login", include_in_schema=False)
 def login_page():
     return _page("login.html")
+
+
+@app.get("/me", include_in_schema=False)
+def me_page():
+    return _page("me.html")
 
 
 @app.get("/tag", include_in_schema=False)

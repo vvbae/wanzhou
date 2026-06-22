@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的贡献 · 万轴</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --line:#e3e3df; --ink:#1c1c1a; --sub:#6b6b66; --ok:#2e7d32; --accent:#c0392b; --wait:#b5651d; }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); padding:16px; max-width:640px; margin:0 auto; }
+  a{color:#2c5b8f}
+  h1{font-size:19px}
+  .c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:10px}
+  .st{display:inline-block;font-size:12px;border-radius:6px;padding:1px 8px;color:#fff}
+  .st.pending{background:var(--wait)} .st.approved{background:var(--ok)} .st.rejected{background:var(--accent)}
+  .k{color:var(--sub);font-size:13px}
+  .v{margin-top:3px}
+  .note{margin-top:5px;font-size:13px;color:var(--accent)}
+  .meta{color:var(--sub);font-size:13px;margin:12px 2px}
+  .err{color:var(--accent);padding:24px 0;text-align:center}
+</style>
+</head>
+<body>
+  <h1>我的贡献</h1>
+  <div id="meta" class="meta"></div>
+  <div id="list"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s==null?"":String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const disp=v=>Array.isArray(v)?v.map(x=>(x&&x.name)||x).join("、"):(v==null?"":String(v));
+const ST={pending:"待审核",approved:"已通过",rejected:"已驳回"};
+const TYPE={book:"新书",work:"作品",edition:"版本",author:"作者"};
+const FL={title:"书名",subtitle:"副书名",description:"简介",subjects:"主题",translators:"译者",publisher:"出版社",
+  publish_date:"出版日期",publish_year:"出版年",language:"语言",series:"丛书",format:"装帧",title_original:"原作名",
+  authors:"作者",name:"姓名",name_original:"原文名",bio:"简介",aliases:"别名",birth_date:"生年",death_date:"卒年"};
+
+function card(c){
+  const what = c.kind==="add" ? `新增${TYPE[c.target_type]||c.target_type}：${esc(c.payload.title||"")}`
+    : `修改${TYPE[c.target_type]||c.target_type} · ${esc(FL[c.field_name]||c.field_name||"")}`;
+  const val = c.kind==="add"
+    ? Object.entries(c.payload).map(([k,v])=>`${esc(FL[k]||k)}：${esc(disp(v))}`).join("；")
+    : esc(disp(c.payload[c.field_name]));
+  const note = (c.status==="rejected" && c.review_note) ? `<div class="note">驳回原因：${esc(c.review_note)}</div>` : "";
+  return `<div class="c">
+    <span class="st ${c.status}">${ST[c.status]||c.status}</span>
+    <span class="k"> ${(c.created_at||"").slice(0,10)}</span>
+    <div class="v">${what}</div>
+    <div class="k">${val}</div>${note}</div>`;
+}
+async function load(){
+  const me=await (await fetch("/auth/me")).json();
+  if(!me.username){ $("#meta").innerHTML=`需要登录。<a href="/login?next=/me">去登录 →</a>`; return; }
+  const r=await fetch("/my/contributions");
+  if(!r.ok){ $("#meta").innerHTML=`需要登录。<a href="/login?next=/me">去登录 →</a>`; return; }
+  const arr=await r.json();
+  const n={pending:0,approved:0,rejected:0}; arr.forEach(c=>n[c.status]=(n[c.status]||0)+1);
+  $("#meta").textContent=`共 ${arr.length} 条 · 待审 ${n.pending} · 已通过 ${n.approved} · 已驳回 ${n.rejected}`;
+  $("#list").innerHTML = arr.map(card).join("") || '<div class="meta">你还没有提交过。去书页"补全/纠错"试试。</div>';
+}
+load();
+</script>
+<script src="/static/chrome.js"></script>
+</body>
+</html>

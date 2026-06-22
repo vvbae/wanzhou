@@ -772,6 +772,19 @@ def add_contribution(conn, *, target_type: str, kind: str, payload: dict,
     return cur.lastrowid
 
 
+def list_contributions_by_user(conn, username: str, limit: int = 200) -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM contributions WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+        (username, limit),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["payload"] = json.loads(d["payload"]) if d.get("payload") else {}
+        out.append(d)
+    return out
+
+
 def list_contributions(conn, status: str = "pending", limit: int = 100) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM contributions WHERE status=? ORDER BY created_at DESC LIMIT ?",

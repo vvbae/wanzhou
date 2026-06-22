@@ -540,6 +540,28 @@ def search_tags(conn, q: str, limit: int = 10) -> list[dict]:
     return [{"slug": r["slug"], "name": r["name"], "count": r["c"]} for r in rows]
 
 
+# 人工挑的中文主题 → 真实英文 slug（OL 主题词是英文，给大众一个中文入口）
+_CURATED_TOPICS = [
+    ("历史", "history"), ("小说", "fiction"), ("传记", "biography"),
+    ("中国文学", "chinese literature"), ("诗歌", "chinese poetry"),
+    ("经济", "economic conditions"), ("政治", "politics and government"),
+    ("哲学", "philosophy"), ("语言", "chinese language"),
+    ("社会风俗", "social life and customs"), ("艺术", "art"), ("教育", "education"),
+    ("宗教", "religion"), ("科学", "science"), ("文学评论", "criticism and interpretation"),
+]
+
+
+def top_tags(conn, n: int = 12) -> list[dict]:
+    """首页"按主题浏览"：中文主题标签（映射到真实 slug，只保留库里有的）。"""
+    out = []
+    for name, slug in _CURATED_TOPICS:
+        if conn.execute("SELECT 1 FROM work_tags WHERE tag_slug=? LIMIT 1", (slug,)).fetchone():
+            out.append({"name": name, "slug": slug})
+        if len(out) >= n:
+            break
+    return out
+
+
 def works_by_tag(conn, slug: str, page: int = 1, page_size: int = 20) -> tuple[int, str, list[dict]]:
     slug = tag_slug(slug)
     name_row = conn.execute("SELECT name FROM tags WHERE slug=?", (slug,)).fetchone()

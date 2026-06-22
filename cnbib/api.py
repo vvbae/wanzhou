@@ -148,6 +148,11 @@ def tags_autocomplete(q: str = Query(..., min_length=1), conn=Depends(get_conn))
     return {"results": store.search_tags(conn, q)}
 
 
+@app.get("/top_tags")
+def top_tags(n: int = Query(12, ge=1, le=40), conn=Depends(get_conn)):
+    return {"results": store.top_tags(conn, n)}
+
+
 @app.get("/tag_works")
 def tag_works(tag: str = Query(...), page: int = Query(1, ge=1),
               page_size: int = Query(20, ge=1, le=100), conn=Depends(get_conn)):
@@ -320,6 +325,11 @@ def login_page():
 @app.get("/tag", include_in_schema=False)
 def tag_page():
     return _page("tag.html")
+
+
+@app.get("/guide", include_in_schema=False)
+def guide_page():
+    return _page("guide.html")
 
 
 @app.get("/about", include_in_schema=False)

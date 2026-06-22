@@ -22,15 +22,17 @@
 <script>
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 async function load(){
-  const tag = new URLSearchParams(location.search).get("tag");
+  const params = new URLSearchParams(location.search);
+  const tag = params.get("tag"); const label = params.get("label");
   if(!tag){ document.getElementById("app").innerHTML='<div class="err">缺少标签</div>'; return; }
   try{
     const d = await (await fetch("/tag_works?"+new URLSearchParams({tag}))).json();
+    const shown = label || d.name || tag;
     const list = d.results.map(w=>`<a href="/work?id=${encodeURIComponent(w.id)}"><div class="hit">
       <div class="t">${esc(w.title)||"(无标题)"}</div>
       <div class="m">${esc((w.authors||[]).join("、"))}${w.first_publish_year?(" · "+w.first_publish_year):""}</div></div></a>`).join("");
     document.getElementById("app").innerHTML =
-      `<h1># ${esc(d.name||tag)}</h1><div class="meta">共 ${d.total} 本</div>`+ (list||'<div class="meta">—</div>');
+      `<h1># ${esc(shown)}</h1><div class="meta">共 ${d.total} 本</div>`+ (list||'<div class="meta">—</div>');
   }catch(e){ document.getElementById("app").innerHTML=`<div class="err">加载失败：${e.message}</div>`; }
 }
 load();

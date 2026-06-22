@@ -79,12 +79,10 @@ const $ = s => document.querySelector(s);
 const ISBN_RE = /^[0-9Xx-]{10,17}$/;
 const esc = s => (s||"").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-function workCard(w) {
-  const meta = [ (w.authors||[]).join("、"), w.first_publish_year ].filter(Boolean).join(" · ");
-  const cover = w.cover_url ? `<img src="${w.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
-  return `<a href="/work?id=${encodeURIComponent(w.id)}"><div class="hit">${cover}
-    <div><div class="t">${esc(w.title) || "(无标题)"}</div>
-    <div class="m">${esc(meta)}</div></div></div></a>`;
+function bookHref(b) { return b.isbn_13 ? "/book?isbn="+encodeURIComponent(b.isbn_13) : "/work?id="+encodeURIComponent(b.id); }
+function gcard(b) {   // 封面网格卡片（同首页）
+  const cover = b.cover_url ? `<img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<img alt="">`;
+  return `<a class="gc" href="${bookHref(b)}">${cover}<div class="t">${esc(b.title)||"(无标题)"}</div></a>`;
 }
 
 async function search(push) {
@@ -113,7 +111,7 @@ async function search(push) {
           <div class="m">${a.work_count} 部作品</div></div></a>`;
       }).join("") + `<div class="secttl">书</div>`
     ) : "";
-    $("#results").innerHTML = authorBlock + d.results.map(workCard).join("");
+    $("#results").innerHTML = authorBlock + `<div class="grid">${d.results.map(gcard).join("")}</div>`;
   } catch (e) { $("#meta").textContent = "搜索失败：" + e.message; }
 }
 
@@ -131,12 +129,7 @@ async function randomBook() {
   } catch (e) { $("#meta").textContent = "出错：" + e.message; }
 }
 
-function renderGrid(items){
-  $("#grid").innerHTML = items.map(b => `
-    <a class="gc" href="/work?id=${encodeURIComponent(b.work_id)}">
-      <img src="${b.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">
-      <div class="t">${esc(b.title)||""}</div></a>`).join("");
-}
+function renderGrid(items){ $("#grid").innerHTML = items.map(gcard).join(""); }
 async function discover(force) {
   // 缓存到 sessionStorage：从书页返回时不再刷新成别的
   if (!force) {

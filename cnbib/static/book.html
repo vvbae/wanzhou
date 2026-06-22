@@ -22,6 +22,11 @@
   .src.crowdsource { background:#2e7d32; } .src.openlibrary { background:#2c5b8f; } .src.google_books { background:#b5651d; }
   .miss { color:#b9b9b3; }
   .work { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:12px; margin-top:16px; }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  @media (max-width:520px){ .grid{ grid-template-columns:repeat(3,1fr); } }
+  .gc { color:var(--ink); } .gc img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:8px; background:#e7e7e3; display:block; }
+  .gc .t { font-size:12px; margin-top:5px; line-height:1.3; max-height:2.6em; overflow:hidden; }
+  .gc .cm { font-size:11px; color:var(--sub); }
   .err { color:var(--accent); padding:24px 0; text-align:center; }
 </style>
 </head>
@@ -40,6 +45,7 @@ function val(e,k){ let v=e[k]; if(Array.isArray(v)) return v.join("、"); return
 function render(e){
   const w = e.work || {};
   const title = e.title || w.display_title || w.title || "(无标题)";
+  const others = (w.editions||[]).filter(o => o.isbn_13 !== e.isbn_13);
   const cover = e.cover_url ? `<img src="${e.cover_url}" onerror="this.style.visibility='hidden'">` : "";
   const rows = EDFIELDS.map(([k,label])=>{
     const v = val(e,k); const src = e.sources && e.sources[k];
@@ -55,11 +61,15 @@ function render(e){
       </div>
     </div>
     <table>${rows}</table>
-    ${w.id?`<div class="work"><div style="color:var(--sub);font-size:13px">所属作品（共 ${(w.editions||[]).length} 个版本）</div>
-      <a href="/work?id=${encodeURIComponent(w.id)}" style="font-weight:600">${esc(w.display_title||w.title)} →</a>
-      ${w.title_original?`<div style="color:var(--sub);font-size:13px">原作名：${esc(w.title_original)}</div>`:""}
-      </div>`:""}
-    <p style="margin-top:16px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a></p>`;
+    ${w.description?`<div class="work">${esc(w.description)}</div>`:""}
+    <p style="margin-top:14px"><a href="/edit?type=edition&isbn=${encodeURIComponent(e.isbn_13)}">✏️ 补全 / 纠错这一版</a>
+      ${w.id?` · <a href="/work?id=${encodeURIComponent(w.id)}">作品页</a>`:""}</p>
+    ${others.length?`<h2 style="font-size:15px;color:var(--sub);margin:20px 0 6px">其他版本（${others.length}）</h2>
+      <div class="grid">${others.map(o=>{
+        const oc=o.cover_url?`<img src="${o.cover_url}" loading="lazy" onerror="this.style.visibility='hidden'">`:`<img alt="">`;
+        const m=[o.publisher,o.publish_year].filter(Boolean).join(" · ");
+        return `<a class="gc" href="/book?isbn=${encodeURIComponent(o.isbn_13)}">${oc}<div class="t">${esc(o.title||title)}</div><div class="cm">${esc(m)}</div></a>`;
+      }).join("")}</div>`:""}`;
 }
 async function load(){
   const isbn = new URLSearchParams(location.search).get("isbn");

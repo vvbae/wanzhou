@@ -297,7 +297,8 @@ def get_author(conn, author_id: str) -> dict | None:
     a = _load_row("author", row)
     a["works"] = [
         {"id": r["id"], "title": _display_title(conn, r["id"], r["title"]),
-         "first_publish_year": r["first_publish_year"], "cover_url": _work_cover(conn, r["id"])}
+         "first_publish_year": r["first_publish_year"],
+         "isbn_13": _work_rep(conn, r["id"])[0], "cover_url": _work_rep(conn, r["id"])[1]}
         for r in conn.execute(
             "SELECT w.id, w.title, w.first_publish_year FROM work_authors wa "
             "JOIN works w ON w.id=wa.work_id WHERE wa.author_id=? ORDER BY w.first_publish_year DESC",
@@ -379,21 +380,28 @@ def search(conn, q: str, page: int = 1, page_size: int = 20) -> tuple[int, list[
     return total, [_work_hit(conn, r) for r in rows]
 
 
-def _work_cover(conn, work_id: str) -> str | None:
+def _work_rep(conn, work_id: str) -> tuple[str | None, str | None]:
+    """作品的代表版本：(isbn, cover)，优先有封面的那版。卡片直接链到这本。"""
     r = conn.execute(
-        "SELECT cover_url FROM editions WHERE work_id=? AND cover_url IS NOT NULL LIMIT 1",
-        (work_id,)
+        "SELECT isbn_13, cover_url FROM editions WHERE work_id=? "
+        "ORDER BY (cover_url IS NULL) LIMIT 1", (work_id,)
     ).fetchone()
-    return r["cover_url"] if r else None
+    return (r["isbn_13"], r["cover_url"]) if r else (None, None)
+
+
+def _work_cover(conn, work_id: str) -> str | None:
+    return _work_rep(conn, work_id)[1]
 
 
 def _work_hit(conn, row: sqlite3.Row) -> dict:
+    isbn, cover = _work_rep(conn, row["id"])
     return {
         "id": row["id"],
+        "isbn_13": isbn,                                          # 代表版本，卡片直接进这本
         "title": _display_title(conn, row["id"], row["title"]),   # 优先中文
         "first_publish_year": row["first_publish_year"],
         "authors": _author_names(conn, row["id"]),
-        "cover_url": _work_cover(conn, row["id"]),
+        "cover_url": cover,
     }
 
 
@@ -653,7 +661,7 @@ def search_authors(conn, q: str, limit: int = 6) -> list[dict]:
 def random_showcase(conn, n: int = 8) -> list[dict]:
     """首页展示用：随机若干本（有封面、优先中文标题），返回作品卡片（去重到作品）。"""
     rows = conn.execute(
-        "SELECT work_id, title, cover_url FROM editions "
+        "SELECT isbn_13, work_id, title, cover_url FROM editions "
         "WHERE cover_url IS NOT NULL AND work_id IS NOT NULL AND title IS NOT NULL "
         "ORDER BY RANDOM() LIMIT ?", (n * 25,)
     ).fetchall()
@@ -665,8 +673,8 @@ def random_showcase(conn, n: int = 8) -> list[dict]:
         seen.add(wid)
         wt = conn.execute("SELECT title FROM works WHERE id=?", (wid,)).fetchone()
         title = _display_title(conn, wid, wt["title"] if wt else r["title"]) or r["title"]
-        card = {"work_id": wid, "title": title, "cover_url": r["cover_url"],
-                "authors": _author_names(conn, wid)}
+        card = {"work_id": wid, "isbn_13": r["isbn_13"], "title": title,
+                "cover_url": r["cover_url"], "authors": _author_names(conn, wid)}
         (cjk if has_cjk(title) else rest).append(card)
         if len(cjk) >= n:
             break

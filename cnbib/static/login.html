@@ -27,6 +27,7 @@
   <div id="msg" class="msg"></div>
   <label>用户名</label><input id="u" autocomplete="username">
   <label>密码（≥6 位）</label><input id="p" type="password" autocomplete="current-password">
+  <label>邮箱（选填；审核员填了能收到「有新待审」邮件）</label><input id="e" type="email" autocomplete="email">
   <div class="row"><button id="login">登录</button><button id="reg">注册</button></div>
 <script>
 const $=s=>document.querySelector(s);
@@ -35,7 +36,7 @@ const next=params.get("next")||"/";
 const invite=params.get("invite");
 function msg(t,ok){const m=$("#msg");m.textContent=t;m.className="msg "+(ok?"ok":"err");}
 async function go(path){
-  const body=JSON.stringify({username:$("#u").value.trim(),password:$("#p").value,invite});
+  const body=JSON.stringify({username:$("#u").value.trim(),password:$("#p").value,invite,email:$("#e").value.trim()});
   try{
     const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
     const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);

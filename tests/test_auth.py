@@ -33,6 +33,14 @@ class TestAuth:
             assert c.post("/auth/login", json={"username": "alice", "password": "secret1"}).status_code == 200
             assert c.post("/auth/login", json={"username": "alice", "password": "wrong"}).status_code == 401
 
+    def test_email_stored_and_reviewer_emails(self, tmp_path, monkeypatch):
+        path, _ = _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            c.post("/auth/register", json={"username": "r1", "password": "secret1", "email": "r1@x.com"})
+        conn = store.connect(path)
+        store.set_role(conn, "r1", "reviewer")
+        assert store.reviewer_emails(conn) == ["r1@x.com"]
+
     def test_short_password_rejected(self, tmp_path, monkeypatch):
         _setup(tmp_path, monkeypatch)
         with TestClient(apimod.app) as c:

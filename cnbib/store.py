@@ -151,6 +151,8 @@ def _ensure_columns(conn) -> None:
         conn.execute("ALTER TABLE contributions ADD COLUMN field_name TEXT")
     if "has_cjk_title" not in {r["name"] for r in conn.execute("PRAGMA table_info(works)")}:
         conn.execute("ALTER TABLE works ADD COLUMN has_cjk_title INTEGER DEFAULT 0")
+    if "email" not in {r["name"] for r in conn.execute("PRAGMA table_info(users)")}:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
 
 
 # ── JSON 助手 ──────────────────────────────────────────────────────
@@ -509,16 +511,25 @@ def verify_password(pw: str, stored: str) -> bool:
         return False
 
 
-def create_user(conn, username: str, password: str, role: str = "user") -> dict:
+def create_user(conn, username: str, password: str, role: str = "user",
+                email: str | None = None) -> dict:
     u = username.strip()
     if not u or len(password) < 6:
         raise ValueError("用户名不能为空，密码至少 6 位")
     if conn.execute("SELECT 1 FROM users WHERE username=?", (u,)).fetchone():
         raise ValueError("用户名已被占用")
-    conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
-                 (u, hash_password(password), role, _now()))
+    conn.execute("INSERT INTO users (username, password_hash, role, email, created_at) VALUES (?,?,?,?,?)",
+                 (u, hash_password(password), role, (email or "").strip() or None, _now()))
     conn.commit()
     return {"username": u, "role": role}
+
+
+def reviewer_emails(conn) -> list[str]:
+    """有邮箱的审核员/管理员邮箱，用于待审通知。"""
+    rows = conn.execute(
+        "SELECT email FROM users WHERE role IN ('reviewer','admin') AND email IS NOT NULL AND email<>''"
+    ).fetchall()
+    return [r["email"] for r in rows]
 
 
 def set_role(conn, username: str, role: str) -> bool:

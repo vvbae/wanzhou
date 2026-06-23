@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from cnbib import store
+from cnbib import notify, store
 from cnbib.aggregator import aggregate
 from cnbib.cleaning import has_cjk
 from cnbib.isbn import normalize
@@ -83,6 +83,21 @@ class Creds(BaseModel):
     username: str
     password: str
     invite: str | None = None
+    email: str | None = None
+
+
+def notify_reviewers(base_url: str):
+    """有新待审时给审核员发邮件（后台任务；没配 Brevo key 自动跳过）。"""
+    conn = store.connect(DB_PATH)
+    try:
+        emails = store.reviewer_emails(conn)
+        n = conn.execute("SELECT count(*) FROM contributions WHERE status='pending'").fetchone()[0]
+    finally:
+        conn.close()
+    if emails:
+        url = base_url.rstrip("/") + "/admin"
+        notify.send_email(emails, f"万轴：有 {n} 条待审",
+                          f'<p>万轴有 {n} 条贡献待审核。</p><p><a href="{url}">去审核台 →</a></p>')
 
 
 class InviteIn(BaseModel):
@@ -228,7 +243,7 @@ def register(c: Creds, response: Response, conn=Depends(get_conn)):
             raise HTTPException(400, "邀请码无效或已被使用")
         role = r
     try:
-        store.create_user(conn, c.username, c.password, role=role)
+        store.create_user(conn, c.username, c.password, role=role, email=c.email)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if c.invite:
@@ -268,7 +283,7 @@ def whoami(user=Depends(current_user)):
 
 # ── 写侧：贡献（进待审）+ 审核 ─────────────────────────────────────
 @app.post("/contribute")
-def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
+def contribute(c: ContributionIn, request: Request, background: BackgroundTasks, conn=Depends(get_conn)):
     if c.kind not in ("add", "edit"):
         raise HTTPException(400, "kind 只能是 add / edit")
     if c.target_type not in ("book", "work", "edition", "author"):
@@ -287,6 +302,7 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
     user = store.get_session_user(conn, request.cookies.get("sid"))
     uid = user["username"] if user else None
     hint = (c.contributor_hint or "").strip() or (request.client.host if request.client else None)
+    pending_before = conn.execute("SELECT count(*) FROM contributions WHERE status='pending'").fetchone()[0]
     if c.kind == "edit":
         # 按字段拆条：同一字段的多个提议天然成组，便于冲突解决
         ids = [store.add_contribution(conn, target_type=c.target_type, kind="edit",
@@ -295,6 +311,9 @@ def contribute(c: ContributionIn, request: Request, conn=Depends(get_conn)):
     else:
         ids = [store.add_contribution(conn, target_type=c.target_type, kind="add",
                payload=c.payload, target_id=c.target_id, contributor_hint=hint, user_id=uid)]
+    # 待审从空变非空 → 给审核员发一封邮件（防刷：burst 期间不重复发）
+    if pending_before == 0 and ids:
+        background.add_task(notify_reviewers, str(request.base_url))
     return {"id": ids[0] if ids else None, "ids": ids, "status": "pending",
             "message": "已提交，等审核"}
 

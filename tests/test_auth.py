@@ -69,6 +69,39 @@ class TestAuth:
             assert c.get("/my/contributions").json()[0]["status"] == "approved"
 
 
+class TestInvites:
+    def test_only_admin_creates_invite_and_register_gets_role(self, tmp_path, monkeypatch):
+        path, _ = _setup(tmp_path, monkeypatch)
+        conn = store.connect(path)
+        store.create_user(conn, "boss", "secret1", role="admin")
+        store.create_user(conn, "rev", "secret1", role="reviewer")
+        conn.close()
+        with TestClient(apimod.app) as c:
+            # 普通/审核员都不能生成邀请
+            c.post("/auth/login", json={"username": "rev", "password": "secret1"})
+            assert c.post("/admin/invites", json={"role": "reviewer"}).status_code == 403
+            c.post("/auth/logout")
+            # 管理员生成邀请
+            c.post("/auth/login", json={"username": "boss", "password": "secret1"})
+            inv = c.post("/admin/invites", json={"role": "reviewer"}).json()
+            assert inv["role"] == "reviewer" and inv["token"]
+            c.post("/auth/logout")
+        # 用邀请注册 → 角色 reviewer
+        with TestClient(apimod.app) as c:
+            r = c.post("/auth/register", json={"username": "newrev", "password": "secret1", "invite": inv["token"]})
+            assert r.json()["role"] == "reviewer"
+            assert c.get("/admin/contributions").status_code == 200   # 能审核
+        # 邀请一次性：再用同一个 → 400
+        with TestClient(apimod.app) as c:
+            assert c.post("/auth/register", json={"username": "x2", "password": "secret1",
+                          "invite": inv["token"]}).status_code == 400
+
+    def test_plain_register_is_user(self, tmp_path, monkeypatch):
+        _setup(tmp_path, monkeypatch)
+        with TestClient(apimod.app) as c:
+            assert c.post("/auth/register", json={"username": "joe", "password": "secret1"}).json()["role"] == "user"
+
+
 class TestRoleGating:
     def test_normal_user_cannot_review_admin_can(self, tmp_path, monkeypatch):
         path, wid = _setup(tmp_path, monkeypatch)

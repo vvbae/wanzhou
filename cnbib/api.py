@@ -68,9 +68,25 @@ def require_reviewer(request: Request, x_admin_token: str = Header(default=""),
     raise HTTPException(403, "需要审核员登录")
 
 
+def require_admin(request: Request, x_admin_token: str = Header(default=""),
+                  conn=Depends(get_conn)) -> dict:
+    """管理员专属（如生成邀请）。"""
+    if ADMIN_TOKEN and x_admin_token == ADMIN_TOKEN:
+        return {"username": "admin", "role": "admin"}
+    u = store.get_session_user(conn, request.cookies.get("sid"))
+    if u and u["role"] == "admin":
+        return u
+    raise HTTPException(403, "需要管理员")
+
+
 class Creds(BaseModel):
     username: str
     password: str
+    invite: str | None = None
+
+
+class InviteIn(BaseModel):
+    role: str = "reviewer"
 
 
 class ContributionIn(BaseModel):
@@ -205,12 +221,29 @@ _COOKIE = dict(httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
 
 @app.post("/auth/register")
 def register(c: Creds, response: Response, conn=Depends(get_conn)):
+    role = "user"
+    if c.invite:                       # 带邀请码 → 注册成审核员/管理员
+        r = store.invite_role(conn, c.invite)
+        if not r:
+            raise HTTPException(400, "邀请码无效或已被使用")
+        role = r
     try:
-        store.create_user(conn, c.username, c.password)
+        store.create_user(conn, c.username, c.password, role=role)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if c.invite:
+        store.use_invite(conn, c.invite, c.username.strip())
     response.set_cookie("sid", store.create_session(conn, c.username.strip()), **_COOKIE)
-    return {"username": c.username.strip(), "role": "user"}
+    return {"username": c.username.strip(), "role": role}
+
+
+@app.post("/admin/invites")
+def create_invite(inv: InviteIn, request: Request, admin=Depends(require_admin), conn=Depends(get_conn)):
+    if inv.role not in ("reviewer", "admin"):
+        raise HTTPException(400, "角色只能是 reviewer 或 admin")
+    token = store.create_invite(conn, inv.role, admin["username"])
+    base = str(request.base_url).rstrip("/")
+    return {"role": inv.role, "token": token, "url": f"{base}/login?invite={token}"}
 
 
 @app.post("/auth/login")

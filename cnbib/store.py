@@ -106,6 +106,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY, username TEXT, created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS invites (
+            token TEXT PRIMARY KEY, role TEXT, created_by TEXT,
+            used_by TEXT, created_at TEXT, used_at TEXT
+        );
         CREATE TABLE IF NOT EXISTS tags (
             slug TEXT PRIMARY KEY, name TEXT, created_at TEXT
         );
@@ -533,6 +537,29 @@ def delete_session(conn, token: str | None) -> None:
     if token:
         conn.execute("DELETE FROM sessions WHERE token=?", (token,))
         conn.commit()
+
+
+def create_invite(conn, role: str, created_by: str) -> str:
+    """生成一个邀请码：用它注册即获得 reviewer/admin 角色。"""
+    if role not in ("reviewer", "admin"):
+        raise ValueError("邀请角色只能是 reviewer 或 admin")
+    token = secrets.token_urlsafe(24)
+    conn.execute("INSERT INTO invites (token, role, created_by, created_at) VALUES (?,?,?,?)",
+                 (token, role, created_by, _now()))
+    conn.commit()
+    return token
+
+
+def invite_role(conn, token: str) -> str | None:
+    """返回未使用邀请的角色；无效/已用返回 None。"""
+    r = conn.execute("SELECT role, used_by FROM invites WHERE token=?", (token,)).fetchone()
+    return r["role"] if r and not r["used_by"] else None
+
+
+def use_invite(conn, token: str, used_by: str) -> None:
+    conn.execute("UPDATE invites SET used_by=?, used_at=? WHERE token=?",
+                 (used_by, _now(), token))
+    conn.commit()
 
 
 # ── 标签（实体 + 多对多，可按标签浏览）──────────────────────────────

@@ -30,10 +30,12 @@
   <div class="row"><button id="login">登录</button><button id="reg">注册</button></div>
 <script>
 const $=s=>document.querySelector(s);
-const next=new URLSearchParams(location.search).get("next")||"/";
+const params=new URLSearchParams(location.search);
+const next=params.get("next")||"/";
+const invite=params.get("invite");
 function msg(t,ok){const m=$("#msg");m.textContent=t;m.className="msg "+(ok?"ok":"err");}
 async function go(path){
-  const body=JSON.stringify({username:$("#u").value.trim(),password:$("#p").value});
+  const body=JSON.stringify({username:$("#u").value.trim(),password:$("#p").value,invite});
   try{
     const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
     const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
@@ -42,6 +44,7 @@ async function go(path){
 }
 $("#login").onclick=()=>go("/auth/login");
 $("#reg").onclick=()=>go("/auth/register");
+if(invite) msg("你收到一个邀请——注册后将获得审核权限。",true);
 </script>
 <script src="/static/chrome.js"></script>
 </body>

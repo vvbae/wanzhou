@@ -238,12 +238,11 @@ def register(c: Creds, response: Response, conn=Depends(get_conn)):
 
 
 @app.post("/admin/invites")
-def create_invite(inv: InviteIn, request: Request, admin=Depends(require_admin), conn=Depends(get_conn)):
-    if inv.role not in ("reviewer", "admin"):
-        raise HTTPException(400, "角色只能是 reviewer 或 admin")
-    token = store.create_invite(conn, inv.role, admin["username"])
+def create_invite(request: Request, admin=Depends(require_admin), conn=Depends(get_conn)):
+    # 只能邀请审核员；管理员仅靠服务器端 make_admin 设，链接泄露也造不出管理员
+    token = store.create_invite(conn, "reviewer", admin["username"])
     base = str(request.base_url).rstrip("/")
-    return {"role": inv.role, "token": token, "url": f"{base}/login?invite={token}"}
+    return {"role": "reviewer", "token": token, "url": f"{base}/login?invite={token}"}
 
 
 @app.post("/auth/login")

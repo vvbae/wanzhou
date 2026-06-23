@@ -104,18 +104,13 @@ async function act(id,what){
 }
 function renderInvite(){
   $("#invitebox").innerHTML = `<div class="c"><div class="ttl">邀请审核员</div>
-    <div class="acts">
-      <select id="invrole" style="padding:7px;border-radius:8px;border:1px solid var(--line)">
-        <option value="reviewer">审核员 reviewer</option><option value="admin">管理员 admin</option></select>
-      <button class="ok" id="invgen">生成邀请链接</button></div>
+    <div class="acts"><button class="ok" id="invgen">生成邀请链接</button></div>
     <div id="invout" style="margin-top:8px;font-size:13px;word-break:break-all"></div></div>`;
   $("#invgen").onclick=async()=>{
     try{
-      const r=await fetch("/admin/invites",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({role:$("#invrole").value})});
+      const r=await fetch("/admin/invites",{method:"POST"});
       const d=await r.json(); if(!r.ok)throw new Error(d.detail||r.statusText);
-      $("#invout").innerHTML=`把这个链接发给对方（一次性，注册即成为${d.role==="admin"?"管理员":"审核员"}）：<br>
-        <a href="${d.url}">${d.url}</a>`;
+      $("#invout").innerHTML=`把这个链接发给对方（一次性，注册即成为审核员）：<br><a href="${d.url}">${d.url}</a>`;
     }catch(e){ $("#invout").textContent="失败："+e.message; }
   };
 }

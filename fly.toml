@@ -2,7 +2,7 @@
 # 关键点：[mounts] 把持久卷挂到 /data，CNBIB_DB 指过去——数据库跨部署存活。
 
 app = "wanzhou"            # 改成你自己的 app 名（全局唯一）
-primary_region = "hkg"     # 香港（降大陆延迟）
+primary_region = "nrt"     # 东京（Fly 已无香港；东京对大陆延迟较好）
 
 [build]
 

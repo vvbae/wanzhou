@@ -9,6 +9,7 @@ WORKDIR /app
 # 先装依赖，利用层缓存
 COPY pyproject.toml uv.lock ./
 COPY cnbib ./cnbib
+COPY make_admin.py enrich.py ./
 RUN uv sync --frozen --no-dev
 
 # 数据库放持久卷挂载点（容器内的 /data，由平台挂卷进来）

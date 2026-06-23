@@ -149,8 +149,6 @@ def _ensure_columns(conn) -> None:
         conn.execute("ALTER TABLE contributions ADD COLUMN user_id TEXT")
     if "field_name" not in cols:
         conn.execute("ALTER TABLE contributions ADD COLUMN field_name TEXT")
-    if "has_cjk_title" not in {r["name"] for r in conn.execute("PRAGMA table_info(works)")}:
-        conn.execute("ALTER TABLE works ADD COLUMN has_cjk_title INTEGER DEFAULT 0")
     if "email" not in {r["name"] for r in conn.execute("PRAGMA table_info(users)")}:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
 
@@ -237,22 +235,6 @@ def rebuild_fts(conn) -> None:
 def upsert_edition(conn, isbn_13: str, edition: dict, *, commit: bool = True) -> str:
     _upsert(conn, "edition", isbn_13, edition, commit=commit)
     return isbn_13
-
-
-def refresh_work_cjk(conn, work_id: str, commit: bool = False) -> None:
-    """重算并写入 works.has_cjk_title：作品标题或任一版本标题含中文则为 1。"""
-    w = conn.execute("SELECT title FROM works WHERE id=?", (work_id,)).fetchone()
-    if not w:
-        return
-    flag = 1 if has_cjk(w["title"]) else 0
-    if not flag:
-        for r in conn.execute("SELECT title FROM editions WHERE work_id=? AND title IS NOT NULL", (work_id,)):
-            if has_cjk(r["title"]):
-                flag = 1
-                break
-    conn.execute("UPDATE works SET has_cjk_title=? WHERE id=?", (flag, work_id))
-    if commit:
-        conn.commit()
 
 
 def _display_title(conn, work_id: str, work_title: str | None) -> str | None:
@@ -479,7 +461,6 @@ def apply_enrichment(conn, isbn: str, record: dict, *, source: str = "google_boo
     conn.execute("UPDATE editions SET enriched=? WHERE isbn_13=?", (_now(), isbn))
     if "title" in ef and wid:
         _reindex_work(conn, wid)
-        refresh_work_cjk(conn, wid)        # 标题转中文了 → 更新中文标记
     if commit:
         conn.commit()
     return changed
@@ -666,8 +647,7 @@ def works_by_tag(conn, slug: str, page: int = 1, page_size: int = 20) -> tuple[i
     offset = (max(1, page) - 1) * page_size
     rows = conn.execute(
         "SELECT w.* FROM work_tags wt JOIN works w ON w.id=wt.work_id "
-        "WHERE wt.tag_slug=? ORDER BY w.has_cjk_title DESC, w.id LIMIT ? OFFSET ?",
-        (slug, page_size, offset)
+        "WHERE wt.tag_slug=? LIMIT ? OFFSET ?", (slug, page_size, offset)
     ).fetchall()
     return total, name_row["name"], [_work_hit(conn, r) for r in rows]
 
@@ -820,7 +800,6 @@ def create_book(conn, payload: dict, *, source: str = "crowdsource",
     set_sources(conn, "edition", isbn,
                 [_FS(k, source, confidence) for k in ef if k != "work_id"], commit=False)
     _reindex_work(conn, wid)
-    refresh_work_cjk(conn, wid)
     if commit:
         conn.commit()
     return isbn

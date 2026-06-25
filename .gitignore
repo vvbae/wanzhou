@@ -20,3 +20,9 @@ probe_raw.json
 # 本地数据库与 dump（不进库）
 data/
 *.txt.gz
+
+# 内部文档（不公开，仅本地保留）
+CLAUDE.md
+DEPLOY.md
+docs/design.md
+docs/backlog.md
